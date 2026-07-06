@@ -1,0 +1,7 @@
+kafka-python-ng==2.2.3
+matplotlib==3.11.0
+matplotlib-inline==0.2.2
+pandas==3.0.3
+pyspark==3.5.0
+python-dateutil==2.9.0.post0
+Spark==0.3.2
