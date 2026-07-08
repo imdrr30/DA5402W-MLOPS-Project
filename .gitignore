@@ -14,7 +14,6 @@ env/
 *.log
 
 # Docker
-docker-compose.yml
 
 # Outputs
 output/
@@ -23,3 +22,5 @@ checkpoint/
 # 
 :Zone.Identifier
 
+# data paths, DB
+data/
