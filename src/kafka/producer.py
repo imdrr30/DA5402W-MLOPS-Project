@@ -31,7 +31,7 @@ def build_record(
         "visitor_id": f'visitor_{round(random.uniform(1, 1000))}',
         "user_id": f'user_{round(random.uniform(1, 1000))}',
         "timestamp": ts.strftime("%Y-%m-%d %H:%M:%S"),
-        "event_type": random.choices(TOPIC_LIST, weights=EVENT_TYPE_WEIGHTS)[0],
+        "event_type": random.choices(EVENT_TYPE, weights=EVENT_TYPE_WEIGHTS)[0],
         "product_id": f'{round(random.uniform(1, 1000))}',
         "order_id_for_refund": f'{round(random.uniform(1, 900))}',
         'is_recommended' : random.choices(['yes', 'no'], weights=[0.25, 0.75])[0]
@@ -76,11 +76,12 @@ def main():
     sleep_interval = 1.0 / args.rate if args.rate > 0 else 0
     start_time = time.time()
     # last_record = None
+    event_id = 0
 
     for i in range(args.records):
         ts = datetime.now(timezone.utc)
-        event_id = random.randint(1, NUM_SENSORS)
-        record = build_record(event_id, ts)
+        id = event_id
+        record = build_record(id, ts)
 
         topic = random.choices(TOPIC_LIST, weights=EVENT_TYPE_WEIGHTS)[0]
         producer.send(topic, key=record["id"], value=record)

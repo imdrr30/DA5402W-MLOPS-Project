@@ -252,7 +252,7 @@ def main():
     parser.add_argument("--n-products", type=int, default=200)
     parser.add_argument("--n-events", type=int, default=10000)
     parser.add_argument("--chunk-size", type=int, default=500000)
-    parser.add_argument("--out-dir", type=str, default=".")
+    parser.add_argument("--out-dir", type=str, default="output")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--stream", action="store_true", help="Simulate pushing to Kafka topics")
     parser.add_argument("--kafka-broker", type=str, default="localhost:9092")
@@ -261,9 +261,9 @@ def main():
     os.makedirs(args.out_dir, exist_ok=True)
     rng = np.random.default_rng(args.seed)
 
-    users_path = os.path.join(args.out_dir, "output/users.csv")
-    products_path = os.path.join(args.out_dir, "output/products.csv")
-    events_path = os.path.join(args.out_dir, "output/events.csv")
+    users_path = os.path.join(args.out_dir, "users.csv")
+    products_path = os.path.join(args.out_dir, "products.csv")
+    events_path = os.path.join(args.out_dir, "events.csv")
 
     print(f"Generating users.csv ({args.n_users:,} rows)...")
     generate_users(args.n_users, rng).to_csv(users_path, index=False)
