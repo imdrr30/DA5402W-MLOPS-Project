@@ -19,3 +19,7 @@ docker-compose.yml
 # Outputs
 output/
 checkpoint/
+
+# 
+:Zone.Identifier
+

@@ -2,12 +2,9 @@ from kafka.admin import KafkaAdminClient, NewTopic
 
 KAFKA_BROKER = 'localhost:9092'
 TOPIC_LIST = [
-    'view', 
-    'add_to_cart', 
-    'delete_from_cart', 
-    'quantity', 
-    'transaction', 
-    'refund_request'
+    'user-events',
+    'recommendation-actions',
+    'notification-events'
 ]
 
 

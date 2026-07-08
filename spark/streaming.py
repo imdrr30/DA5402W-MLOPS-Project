@@ -4,7 +4,7 @@ import pyspark
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 from pyspark.sql.types import (
-    StructType, StructField, StringType, TimestampType, IntegerType
+    StructType, StructField, StringType, TimestampType, IntegerType, BooleanType
 )
 
 
@@ -14,8 +14,8 @@ os.environ['JAVA_HOME'] = '/usr/lib/jvm/java-17-openjdk-amd64'
 
 VERSION = pyspark.__version__
 KAFKA_PKG = f'org.apache.spark:spark-sql-kafka-0-10_2.12:{VERSION}'
-TOPIC_LIST = ['view', 'add_to_cart', 'delete_from_cart', 'quantity', 'transaction', 'refund_request']
 KAFKA_BROKER = 'localhost:9092'
+TOPIC_LIST = ['user-events', 'recommendation-actions', 'notification-events' ]
 
 spark = (
     SparkSession.builder
@@ -37,9 +37,10 @@ kafka_df = (
     .option('kafka.bootstrap.servers', KAFKA_BROKER)
     .option(
         'subscribe', 
-        'view, add_to_cart, delete_from_cart, quantity, transaction, refund_request'
+        'user-events,recommendation-actions,notification-events'
     )
-    .option('startingOffsets', 'latest')
+    .option('failOnDataLoss', 'false')
+    .option('startingOffsets', 'earliest')
     .load()
 )
 
@@ -47,109 +48,114 @@ json_df = kafka_df.select(
     F.col('value').cast('string').alias('json')
 )
 
-EVENT_SCHEMA = StructType([
-    StructField('id', StringType(), False),
-    StructField('visitor_id', StringType(), True),
-    StructField('user_id', StringType(), True),
-    StructField('timestamp', StringType(), True),
-    StructField('event_type', StringType(), True),
-    StructField('product_id', StringType(), True),
-    StructField('order_id_for_refund', StringType(), True),
-    StructField('is_recommended', StringType(), True),
+USER_EVENT_SCHEMA = StructType([
+    StructField("id", IntegerType(), True),
+    StructField("visitor_id", StringType(), True),
+    StructField("user_id", IntegerType(), True),
+    StructField("timestamp", StringType(), True),
+    StructField("event_type", StringType(), True),
+    StructField("product_id", IntegerType(), True),
+    StructField("order_id_for_refund", StringType(), True),
+    StructField("is_recommended", BooleanType(), True)
 ])
 
-events_df = (
-    json_df.select(
-        F.from_json(F.col('json'), EVENT_SCHEMA).alias('data')
-    ).select('data.*')
+RECOMMENDATION_SCHEMA = StructType([
+    StructField("id", IntegerType(), True),
+    StructField("visitor_id", StringType(), True),
+    StructField("user_id", IntegerType(), True),
+    StructField("timestamp", StringType(), True),
+    StructField("event_type", StringType(), True),
+    StructField("product_id", IntegerType(), True),
+    StructField("order_id_for_refund", StringType(), True),
+    StructField("is_recommended", BooleanType(), True)
+])
+
+NOTIFICATION_SCHEMA = StructType([
+    StructField("id", IntegerType(), True),
+    StructField("visitor_id", StringType(), True),
+    StructField("user_id", IntegerType(), True),
+    StructField("timestamp", StringType(), True),
+    StructField("event_type", StringType(), True),
+    StructField("product_id", IntegerType(), True),
+    StructField("order_id_for_refund", StringType(), True),
+    StructField("is_recommended", BooleanType(), True)
+])
+
+
+# user_events_df = events_df.filter(
+#     F.col("topic") == "user-events"
+# )
+
+# recommendation_df = events_df.filter(
+#     F.col("topic") == "recommendation-actions"
+# )
+
+# notification_df = events_df.filter(
+#     F.col("topic") == "notification-events"
+# )
+
+user_events_raw = json_df.filter(F.col("topic") == "user-events")
+recommendation_raw = json_df.filter(F.col("topic") == "recommendation-actions")
+notification_raw = json_df.filter(F.col("topic") == "notification-events")
+
+
+user_events_df = (
+    user_events_raw
+    .select(F.from_json("json", USER_EVENT_SCHEMA).alias("data"))
+    .select("data.*")
 )
+user_events_df.printSchema()
 
-events_df.printSchema()
-
-
-# 'view, add_to_cart, delete_from_cart, quantity, transaction, refund_request'
-
-view_df = events_df.filter(
-    F.col('event_type') == 'view'
+recommendation_df = (
+    recommendation_raw
+    .select(F.from_json("json", RECOMMENDATION_SCHEMA).alias("data"))
+    .select("data.*")
 )
-add_to_cart_df = events_df.filter(events_df.event_type == 'add_to_cart')
-delete_from_cart_df = events_df.filter(events_df.event_type == 'delete_from_cart')
-quantity_df = events_df.filter(events_df.event_type == 'quantity')
-transaction_df = events_df.filter(events_df.event_type == 'transaction')
-refund_request_df = events_df.filter(events_df.event_type == 'refund_request')
+recommendation_df.printSchema()
+
+notification_df = (
+    notification_raw
+    .select(F.from_json("json", NOTIFICATION_SCHEMA).alias("data"))
+    .select("data.*")
+)
+notification_df.printSchema()
 
 
 
-write_to_console_query = (
-    events_df.writeStream
+
+user_events_df_query = (
+    user_events_df.writeStream
     .format('console')
     .outputMode('append')
-    # .option('path', './csv_output')
+    .option("truncate", "false")
+    .option("numRows", 20)
     .start()
 )
 
-view_query = (
-    view_df.writeStream
-    .format("csv")
-    .outputMode("append")
-    .option("path", "./output/view")
-    .option("checkpointLocation", "./checkpoint/view")
+recommendation_df_query = (
+    recommendation_df.writeStream
+    .format('console')
+    .outputMode('append')
+    .option("truncate", "false")
+    .option("numRows", 20)
     .start()
 )
 
-add_to_cart_query = (
-    add_to_cart_df.writeStream
-    .format("csv")
-    .outputMode("append")
-    .option("path", "./output/add_to_cart")
-    .option("checkpointLocation", "./checkpoint/add_to_cart")
+notification_df_query = (
+    notification_df.writeStream
+    .format('console')
+    .outputMode('append')
+    .option("truncate", "false")
+    .option("numRows", 20)
     .start()
 )
 
-quantity_query = (
-    quantity_df.writeStream
-    .format("csv")
-    .outputMode("append")
-    .option("path", "./output/quantity")
-    .option("checkpointLocation", "./checkpoint/quantity")
-    .start()
-)
-
-delete_from_cart_query = (
-    delete_from_cart_df.writeStream
-    .format("csv")
-    .outputMode("append")
-    .option("path", "./output/delete_from_cart")
-    .option("checkpointLocation", "./checkpoint/delete_from_cart")
-    .start()
-)
-
-transaction_query = (
-    transaction_df.writeStream
-    .format("csv")
-    .outputMode("append")
-    .option("path", "./output/transaction")
-    .option("checkpointLocation", "./checkpoint/transaction")
-    .start()
-)
-
-refund_request_query = (
-    refund_request_df.writeStream
-    .format("csv")
-    .outputMode("append")
-    .option("path", "./output/refund_request")
-    .option("checkpointLocation", "./checkpoint/refund_request")
-    .start()
-)
 
 
 queries = [
-    write_to_console_query,
-    view_query,
-    add_to_cart_query,
-    delete_from_cart_query,
-    transaction_query,
-    refund_request_query,
+    user_events_df_query,
+    recommendation_df_query,
+    notification_df_query,
 ]
 
 
@@ -166,5 +172,7 @@ finally:
     print('-' * 50)
     print('All queries completed')
     print('-' * 50)
+
+
 
 
