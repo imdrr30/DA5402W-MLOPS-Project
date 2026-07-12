@@ -10,6 +10,8 @@ class Analytics:
         self.recommendations = spark.read.parquet("./data/raw/recommendation_actions")
         self.notifications = spark.read.parquet("./data/raw/notification_events")
 
+    # User metrics
+
     def total_registered_customers(self):
         return (
             self.user_events
@@ -19,45 +21,88 @@ class Analytics:
             .count()
         )
 
-
     def total_anonymous_visitors(self):
-        pass
+        return (
+            self.user_events
+            .filter(F.col('user_id').isNull())
+            .count()
+        )
 
     def total_customers(self):
-        pass
+        registered = (
+            self.user_events
+            .filter(F.col("user_id").isNotNull())
+            .select(F.col("user_id").alias("customer"))
+        )
+        
+        anonymous = (
+            self.user_events
+            .filter(F.col("user_id").isNull())
+            .select(F.col("user_id").alias("customer"))
+        )
 
-    # ---------------------------------------------------------
+        return (
+            registered
+            .union(anonymous)
+            .distinct()
+            .count()
+        )
+
     # Event Metrics
-    # ---------------------------------------------------------
-
+    
     def total_events(self):
-        pass
+        return self.user_events.count()
 
     def events_by_type(self):
-        pass
+        return (
+            self.user_events
+            .groupBy('event_type')
+            .count()
+            .withColumnRenamed('count', 'event_count')
+            .orderBy('event_count', ascending=False)
+        )
 
-    # ---------------------------------------------------------
     # Product Metrics
-    # ---------------------------------------------------------
-
+    
     def total_views(self):
-        pass
+        return (
+            self.user_events
+            .filter(F.col('event_type') == 'view')
+            .count()
+        )
 
     def total_add_to_cart(self):
-        pass
+        return (
+            self.user_events
+            .filter(F.col('event_type') == 'add_to_cart')
+            .count()
+        )
 
     def total_purchases(self):
-        pass
+        return (
+            self.user_events
+            .filter(F.col('event_type') == 'transaction')
+            .count()
+        )
 
     def total_refunds(self):
-        pass
+        return (
+            self.user_events
+            .filter(F.col('event_type') == 'refund_request')
+            .count()
+        )
 
-    # ---------------------------------------------------------
     # Rankings
-    # ---------------------------------------------------------
 
     def top_viewed_products(self, limit=10):
-        pass
+        return (
+            self.user_events
+            .filter(F.col('event_type') == 'view')
+            .groupBy('product_id')
+            .count()
+            .withColumnRenamed('count', 'top_viewed_products')
+            .orderBy('top_viewed_products', ascending=False)
+        )
 
     def top_cart_products(self, limit=10):
         pass
