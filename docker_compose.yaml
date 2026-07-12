@@ -33,9 +33,9 @@ services:
       - "4040:4040"  # Spark UI port for local apps
     volumes:
       # Maps local directories to Spark's official default workspace directory
-      - ./sparkScripts:/opt/spark/work-dir/scripts
-      - ./sparkOutput:/opt/spark/work-dir/output
+      - ./src/sparkScripts:/opt/spark/work-dir/scripts
+      - ./outputs/sparkOutput:/opt/spark/work-dir/output
       - ./DB:/DB/
-      - ./mappingData:/mappingData
+      - ./lookupData:/lookupData
     networks:
       - spark-kafka-net
