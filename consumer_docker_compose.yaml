@@ -1,0 +1,41 @@
+version: '3.8'
+
+networks:
+  spark-kafka-net:
+    driver: bridge
+
+services:
+  # --- KAFKA BROKER ---
+  kafka:
+    image: apache/kafka:3.7.0
+    container_name: kafka
+    ports:
+      - "9094:9094"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093,EXTERNAL://0.0.0.0:9094
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://localhost:9094
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    networks:
+      - spark-kafka-net
+
+  # --- OFFICIAL APACHE SPARK CONTAINER ---
+  spark:
+    image: apache/spark:3.5.1  # Matches official image naming
+    container_name: spark-master
+    user: root  # Prevents local permission issues with volume mounting
+    command: tail -f /dev/null
+    ports:
+      - "4040:4040"  # Spark UI port for local apps
+    volumes:
+      # Maps local directories to Spark's official default workspace directory
+      - ./sparkScripts:/opt/spark/work-dir/scripts
+      - ./sparkOutput:/opt/spark/work-dir/output
+      - ./DB:/DB/
+      - ./mappingData:/mappingData
+    networks:
+      - spark-kafka-net

@@ -1,0 +1,66 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+*$py.class
+*.so
+*.egg
+.eggs/
+.venv/
+venv/
+env/
+ENV/
+build/
+dist/
+
+# env
+.env
+.env.*
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log
+logs/
+
+# Docker
+*.pid
+
+# runtime data
+tmp/
+output/
+
+# spark checkpoints
+checkpoints/
+
+# windows files
+*Zone.Identifier
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# data paths, DB
+databases/
+
+# Spark
+spark-warehouse/
+.metastore_db/
+
+# Runtime files
+*.crc
+
+# generated data
+data/raw/
+data/processed/
+data/features/
+data/training/
+data/inference/
+
+
+# models
+models/
+
+
+
