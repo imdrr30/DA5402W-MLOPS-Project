@@ -10,6 +10,8 @@ import pandas as pd
 import json
 import os
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
 def extract_transaction_features(csv_file_path: str = "events.csv", output_csv_path: str = "extracted_features.csv") -> pd.DataFrame:
     """
     Extracts transaction features from an event log CSV file.
@@ -94,6 +96,8 @@ def extract_transaction_features(csv_file_path: str = "events.csv", output_csv_p
     return features_df
 
 if __name__ == "__main__":
-    features = extract_transaction_features("events.csv", "extracted_features.csv")
+    events_path=os.path.join(BASE_DIR, "../..", "sample", "events.csv")
+    extract_path=os.path.join(BASE_DIR, "../..", "DB", "extracted_features.csv")
+    features = extract_transaction_features(events_path, extract_path)
     print("\nExtracted Features Preview (First 5 Rows):")
     print(features[['user_id', 'session_id', 'event_type', 'cart_product_id_list']].head())
