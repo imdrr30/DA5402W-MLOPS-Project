@@ -1,71 +1,6 @@
-"""
-spark_customer_stream.py
---------------------------------------------------------------------------
-Consumes events from Kafka (topics: user-events, recommendation-actions,
-notification-events) produced by the synthetic e-commerce event generator,
-and writes append-only output keyed at the customer level (user_id if
-identified, else visitor_id).
+# docker exec -it spark-master /opt/spark/bin/spark-submit --master "local[*]" --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.1 /opt/spark/work-dir/scripts/spark_streaming_consumer.py   --mode stream --brokers kafka:9092 --raw-events-path /DB/consumed_events --products-path /lookupData/products.csv
 
-Two modes:
 
-  --mode stream (default)
-      Runs the streaming job. Primary output:
-        1. raw_events   -> every event, UN-aggregated, at full item/event
-                           grain (event_type, product_id, order_id_for_refund,
-                           is_recommended, recommendation_view, timestamp,
-                           etc.), tagged with a unified `customer_key` and
-                           `id_type` (user/visitor). This is the feature-store
-                           source-of-truth log -- feature computation (rolling
-                           counts, last-N-products, recency, etc.) should be
-                           derived from this raw log downstream (batch or a
-                           separate streaming job), not baked in here, so you
-                           keep point-in-time correctness and can recompute
-                           features however you need later.
-
-                           Partitioned by id_type/event_date (NOT by
-                           customer_key -- too high cardinality, causes the
-                           small-files problem). Each micro-batch is sorted by
-                           customer_key before writing so rows for the same
-                           customer cluster together within files, which
-                           speeds up later filtering via Parquet's per-file
-                           min/max column stats.
-
-      Optional output (off by default, enable with --enable-activity-agg):
-        2. customer_activity -> windowed per-customer aggregate counts.
-                           Useful for dashboards/monitoring, but NOT a
-                           substitute for the raw log when building a feature
-                           store -- aggregating collapses the item-level
-                           detail (which product was viewed/added/bought)
-                           that most useful features are actually built from.
-
-  --mode compact
-      One-shot BATCH job (run periodically, e.g. nightly via cron/Airflow --
-      NOT run continuously). Re-reads everything under raw_events and
-      rewrites it as a bucketed table (bucketBy is batch-only, not supported
-      on DataStreamWriter), so downstream point-lookups and joins on
-      customer_key can use bucket pruning / avoid a shuffle. Overwrites the
-      table each run to avoid re-bucketing small-file buildup from repeated
-      appends.
-
-Usage:
-    # streaming ingestion
-    spark-submit spark_customer_stream.py --mode stream \
-        --brokers localhost:9092 \
-        --topics user-events,recommendation-actions,notification-events \
-        --raw-events-path /data/raw_events \
-        --activity-path /data/customer_activity \
-        --checkpoint-dir /chk \
-        --window-duration "10 minutes" \
-        --watermark-delay "10 minutes" \
-        --starting-offsets latest
-
-    # periodic batch compaction into a bucketed table
-    spark-submit spark_customer_stream.py --mode compact \
-        --raw-events-path /data/raw_events \
-        --bucketed-table customer_events_bucketed \
-        --num-buckets 50
---------------------------------------------------------------------------
-"""
 
 import argparse
 
@@ -73,13 +8,17 @@ from pyspark.sql import SparkSession, functions as F
 from pyspark.sql.types import (
     StructType, StructField, StringType, BooleanType, LongType
 )
+from metrics import (
+    start_user_event_metrics, 
+    start_recommendation_metrics, 
+    start_notifications_metrics
+)
 
-# --------------------------------------------------------------------------
-# Schema matching the events.csv / Kafka payload structure
-# --------------------------------------------------------------------------
+
 EVENT_SCHEMA = StructType([
     StructField("id", LongType()),
     StructField("topic", StringType()),
+    StructField("session_id", StringType()),
     StructField("visitor_id", StringType()),
     StructField("user_id", StringType()),
     StructField("timestamp", StringType()),
@@ -89,6 +28,50 @@ EVENT_SCHEMA = StructType([
     StructField("is_recommended", BooleanType()),
     StructField("recommendation_view", StringType()),
 ])
+
+EVENT_CONFIG = {
+    # 1. user-events topic
+    "view": "user-events",
+    "add_to_cart": "user-events",
+    "delete_from_cart": "user-events",
+    "quantity": "user-events",
+    "transaction": "user-events",
+    "refund_request": "user-events",
+
+    # 2. recommendation-actions topic
+    "recommendation_shown": "recommendation-actions",
+    "recommendation_clicked": "recommendation-actions",
+    "recommendation_accepted": "recommendation-actions",
+    "recommendation_rejected": "recommendation-actions",
+
+    # 3. notification-events topic
+    "discount_offer_sent": "notification-events",
+    "reminder_sent": "notification-events",
+    "offer_accepted": "notification-events",
+    "offer_declined": "notification-events",
+}
+
+USER_EVENTS = [k for k, v in EVENT_CONFIG.items() if v == "user-events"]
+RECOMMENDATION_EVENTS = [k for k, v in EVENT_CONFIG.items() if v == "recommendation-actions"]
+NOTIFICATION_EVENTS = [k for k, v in EVENT_CONFIG.items() if v == "notification-events"]
+
+
+EVENT_TYPE_TO_TOPIC = EVENT_CONFIG
+
+# _EVENT_TOPIC_MAP_COL = F.create_map(
+#     [F.lit(x) for kv in EVENT_TYPE_TO_TOPIC.items() for x in kv]
+# )
+
+# _event_topic_map_col = None
+
+# def _get_event_topic_map_col():
+#     global _event_topic_map_col
+#     if _event_topic_map_col is None:
+#         _event_topic_map_col = F.create_map(
+#             [F.lit(x) for kv in EVENT_TYPE_TO_TOPIC.items() for x in kv]
+#         )
+#     return _event_topic_map_col
+
 
 
 def parse_args():
@@ -127,12 +110,25 @@ def parse_args():
                          help="Spark master URL, e.g. 'local[*]', 'yarn', 'spark://host:7077', "
                               "'k8s://https://host:port'. Ignored if spark-submit's own "
                               "--master flag is also set (that one wins).")
-    # --- compact mode only ---
+    # for compact mode only
     parser.add_argument("--bucketed-table", type=str, default="customer_events_bucketed",
                          help="[compact mode] Metastore table name to write bucketed output to")
     parser.add_argument("--num-buckets", type=int, default=50,
                          help="[compact mode] Fixed number of buckets to hash customer_key into")
+
+    # for dumping raw and metrics
+    parser.add_argument("--dump-raw-topics", action="store_true",
+                     help="Also write validated per-topic data to CSV for inspection")
+    parser.add_argument("--dump-path", type=str, default="/DB/topic_dumps")
+    
+    parser.add_argument("--enable-console-metrics", action="store_true",
+                        help="Start per-topic aggregate metrics (console or csv, see --metrics-sink)")
+    parser.add_argument("--metrics-sink", type=str, default="console", choices=["console", "csv"])
+    parser.add_argument("--metrics-path", type=str, default="/DB/metrics")
+
     return parser.parse_args()
+
+
 
 
 def build_spark_session(app_name: str, master: str) -> SparkSession:
@@ -140,7 +136,7 @@ def build_spark_session(app_name: str, master: str) -> SparkSession:
         SparkSession.builder
         .appName(app_name)
         .master(master)
-        .config("spark.sql.shuffle.partitions", "8")  # tune for your cluster/local size
+        .config("spark.sql.shuffle.partitions", "6")
         .getOrCreate()
     )
 
@@ -159,17 +155,17 @@ def read_kafka_stream(spark: SparkSession, brokers: str, topics: str, starting_o
 
 
 def parse_and_key_events(raw_df):
-    """Parse Kafka JSON payloads, derive event_time, and compute a unified
-    customer_key that works for both identified users and anonymous visitors.
-    Deliberately does NOT aggregate or drop any columns -- every field from
-    the source event (event_type, product_id, order_id_for_refund,
-    is_recommended, recommendation_view, ...) is preserved as-is, since this
-    is the raw log a feature store will be built from."""
+    # Parse Kafka JSON payloads, derive event_time, and compute a unified customer_key that works for both identified users and anonymous visitors.
+
     parsed = (
         raw_df
-        .selectExpr("CAST(value AS STRING) AS json_value", "topic AS kafka_topic")
-        .select(F.from_json("json_value", EVENT_SCHEMA).alias("data"), "kafka_topic")
-        .select("data.*", "kafka_topic")
+        .selectExpr(
+            "CAST(value AS STRING) AS json_value", 
+            "topic AS kafka_topic"
+        ).select(
+            F.from_json("json_value", EVENT_SCHEMA)
+            .alias("data"), "kafka_topic"
+        ).select("data.*", "kafka_topic")
     )
 
     keyed = (
@@ -178,25 +174,26 @@ def parse_and_key_events(raw_df):
         .withColumn("event_date", F.to_date("event_time"))
         .withColumn(
             "customer_key",
-            F.when((F.col("user_id").isNotNull()) & (F.col("user_id") != ""), F.col("user_id"))
-             .otherwise(F.col("visitor_id"))
+            F.when(
+                (F.col("user_id").isNotNull()) & (F.col("user_id") != ""), 
+                F.col("user_id")
+            ).otherwise(F.col("visitor_id"))
         )
         .withColumn(
             "id_type",
-            F.when((F.col("user_id").isNotNull()) & (F.col("user_id") != ""), F.lit("user"))
-             .otherwise(F.lit("visitor"))
+            F.when(
+                (F.col("user_id").isNotNull()) & (F.col("user_id") != ""), 
+                F.lit("user")
+            ).otherwise(F.lit("visitor"))
         )
-        # Drop any row we genuinely can't attribute to anyone (shouldn't happen, but be safe)
         .filter(F.col("customer_key").isNotNull() & (F.col("customer_key") != ""))
     )
     return keyed
 
 
 def enrich_with_products(keyed_df, spark, products_path: str):
-    """Static broadcast join: attach category/price to each event row from
-    products.csv. Broadcast join is safe/cheap here since products.csv is
-    small (hundreds of rows) and static -- this is a lookup enrichment, not a
-    stream-stream join, so no watermarking is needed."""
+    # Static broadcast join: attach category/price to each event row from products.csv. Broadcast join is cheap here since products.csv is small (100s of rows), this is not a stream-stream join
+
     products = (
         spark.read.csv(products_path, header=True, inferSchema=True)
         .select(
@@ -210,7 +207,7 @@ def enrich_with_products(keyed_df, spark, products_path: str):
 
 
 def build_customer_activity(keyed_df, window_duration: str, watermark_delay: str):
-    """Append-mode windowed aggregation: per customer, per time window."""
+    
     return (
         keyed_df
         .withWatermark("event_time", watermark_delay)
@@ -237,12 +234,6 @@ def build_customer_activity(keyed_df, window_duration: str, watermark_delay: str
 
 
 def start_raw_events_sink(keyed_df, path: str, checkpoint_dir: str, trigger_interval: str):
-    """Writes every event, partitioned by low-cardinality id_type/event_date
-    (never by customer_key -- see module docstring). Uses foreachBatch so we
-    can sort each micro-batch by customer_key before writing: this doesn't
-    reduce file count, but it clusters same-customer rows together within
-    each file, which makes Parquet's per-file min/max column stats much more
-    effective for later `filter(customer_key == ...)` queries."""
 
     def write_batch(batch_df, batch_id):
         (batch_df
@@ -269,7 +260,68 @@ def start_customer_activity_sink(activity_df, path: str, checkpoint_dir: str, tr
         .format("parquet")
         .option("path", path)
         .option("checkpointLocation", f"{checkpoint_dir}/customer_activity")
-        .outputMode("append")   # safe because window+watermark guarantees a row is final when emitted
+        .outputMode("append")
+        .trigger(processingTime=trigger_interval)
+        .start()
+    )
+    return query
+
+
+def _validate_common(df):
+    return (
+        df
+        .filter(F.col("event_time").isNotNull())
+        .filter(F.col("id").isNotNull())
+        .filter(F.col("visitor_id").isNotNull())
+        .filter(F.col("event_type").isNotNull())
+        .dropDuplicates(["id"])
+        .filter(F.col("event_type").isin(list(EVENT_TYPE_TO_TOPIC.keys())))
+        # .filter(F.col("kafka_topic") == _get_event_topic_map_col()[F.col("event_type")])
+    )
+
+
+def validate_user_events(df):
+    return (
+        _validate_common(df)
+        .filter(F.col("event_type").isin(USER_EVENTS))
+        .filter(F.col("product_id").isNotNull())
+        .filter(F.col("product_id").cast("long") > 0)
+        # refund requests must carry an order id
+        .filter(
+            ~(
+                (F.col("event_type") == "refund_request")
+                & F.col("order_id_for_refund").isNull()
+            )
+        )
+    )
+
+
+def validate_recommendation_events(df):
+    return (
+        _validate_common(df)
+        .filter(F.col("event_type").isin(RECOMMENDATION_EVENTS))
+        .filter(F.col("product_id").isNotNull())
+        .filter(F.col("product_id").cast("long") > 0)
+    )
+
+
+def validate_notification_events(df):
+    return (
+        _validate_common(df)
+        .filter(F.col("event_type").isin(NOTIFICATION_EVENTS))
+    )
+
+
+
+def start_topic_dump_sink(df, path: str, checkpoint_dir: str, topic_name: str, trigger_interval: str):
+    """Append-mode raw dump of a validated topic df to CSV, for eyeballing the data."""
+    query = (
+        df.writeStream
+        .format("csv")
+        .option("path", f"{path}/{topic_name}")
+        .option("header", True)
+        .option("checkpointLocation", f"{checkpoint_dir}/dump_{topic_name}")
+        .outputMode("append")
         .trigger(processingTime=trigger_interval)
         .start()
     )
@@ -280,39 +332,55 @@ def run_stream_job(spark, args):
     raw_df = read_kafka_stream(spark, args.brokers, args.topics, args.starting_offsets)
     keyed_df = parse_and_key_events(raw_df)
 
+    watermarked = keyed_df.withWatermark("event_time", args.watermark_delay)
+    user_df = validate_user_events(watermarked.filter(F.col("kafka_topic") == "user-events"))
+    rec_df = validate_recommendation_events(watermarked.filter(F.col("kafka_topic") == "recommendation-actions"))
+    notif_df = validate_notification_events(watermarked.filter(F.col("kafka_topic") == "notification-events"))
+
+    validated_df = user_df.unionByName(rec_df).unionByName(notif_df)
+
     if args.products_path:
-        keyed_df = enrich_with_products(keyed_df, spark, args.products_path)
+        validated_df = enrich_with_products(validated_df, spark, args.products_path)
         print(f"[INFO] Enriching events with product category/price from: {args.products_path}")
 
     start_raw_events_sink(
-        keyed_df, args.raw_events_path, args.checkpoint_dir, args.trigger_interval
+        validated_df, args.raw_events_path, args.checkpoint_dir, args.trigger_interval
     )
     print(f"[INFO] raw_events (item-level, un-aggregated) streaming to: {args.raw_events_path}")
 
     if args.enable_activity_agg:
-        activity_df = build_customer_activity(keyed_df, args.window_duration, args.watermark_delay)
+        activity_df = build_customer_activity(validated_df, args.window_duration, args.watermark_delay)
         start_customer_activity_sink(
             activity_df, args.activity_path, args.checkpoint_dir, args.trigger_interval
         )
         print(f"[INFO] customer_activity (windowed aggregates) streaming to: {args.activity_path}")
 
-    print("[INFO] Query(ies) running. Awaiting termination (Ctrl+C to stop)...")
+    if args.dump_raw_topics:
+        start_topic_dump_sink(user_df, args.dump_path, args.checkpoint_dir, "user_events", args.trigger_interval)
+        start_topic_dump_sink(rec_df, args.dump_path, args.checkpoint_dir, "recommendation_events", args.trigger_interval)
+        start_topic_dump_sink(notif_df, args.dump_path, args.checkpoint_dir, "notification_events", args.trigger_interval)
+        print(f"[INFO] Raw per-topic CSV dumps writing to: {args.dump_path}/{{user_events,recommendation_events,notification_events}}")
 
-    # Wait on all active queries; if any fails, this will raise and stop the process
+    if args.enable_console_metrics:
+        start_user_event_metrics(
+            user_df, args.metrics_sink, args.metrics_path, args.checkpoint_dir, args.trigger_interval
+        )
+        start_recommendation_metrics(
+            rec_df, args.metrics_sink, args.metrics_path, args.checkpoint_dir, args.trigger_interval
+        )
+        start_notifications_metrics(
+            notif_df, args.metrics_sink, args.metrics_path, args.checkpoint_dir, args.trigger_interval
+        )
+        print(f"[INFO] Metrics running -> sink={args.metrics_sink}"
+            + (f", path={args.metrics_path}" if args.metrics_sink == "csv" else ""))
+
+    print("[INFO] Query(ies) running. Awaiting termination (Ctrl+C to stop)...")
     spark.streams.awaitAnyTermination()
 
 
-def run_compact_job(spark, args):
-    """Batch job: rewrite raw_events as a bucketed metastore table, keyed on
-    customer_key. bucketBy is batch-only (not supported on DataStreamWriter),
-    which is why this runs separately from the streaming job -- schedule it
-    periodically (cron/Airflow), don't run it continuously.
 
-    Uses mode('overwrite') and re-reads the full raw_events dataset each run,
-    rather than mode('append'), because repeatedly appending to a bucketed
-    table creates a fresh set of per-bucket files on every run -- you'd end
-    up with num_buckets x num_runs files instead of num_buckets, recreating
-    the small-files problem at the bucket level."""
+
+def run_compact_job(spark, args):
 
     print(f"[INFO] Reading raw events from: {args.raw_events_path}")
     raw = spark.read.parquet(args.raw_events_path)
@@ -325,9 +393,11 @@ def run_compact_job(spark, args):
         .bucketBy(args.num_buckets, "customer_key")
         .sortBy("customer_key")
         .mode("overwrite")
-        .saveAsTable(args.bucketed_table))
+        .saveAsTable(args.bucketed_table)
+    )
 
     print(f"[INFO] Done. Verify with: DESCRIBE FORMATTED {args.bucketed_table}")
+
 
 
 def main():
@@ -343,3 +413,8 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+
+
+

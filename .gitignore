@@ -35,6 +35,7 @@ outputs/
 
 # spark checkpoints
 checkpoints/
+chk/
 
 # windows files
 *Zone.Identifier
