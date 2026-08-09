@@ -51,3 +51,93 @@ services:
       - ./outputs/mlruns:/mlflow
     networks:
       - spark-kafka-net
+   
+
+  # --- Airflow Metadata DB ---
+  postgres:
+    image: postgres:13
+    container_name: airflow-postgres
+    environment:
+      - POSTGRES_USER=airflow
+      - POSTGRES_PASSWORD=airflow
+      - POSTGRES_DB=airflow
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./postgres_data:/var/lib/postgresql/data
+
+  # --- Airflow Init (DB + Admin User) ---
+  airflow-init:
+    build:
+        context: .                # project root as build context
+        dockerfile: dockerFiles/Dockerfile
+    image: custom-airflow:latest
+    container_name: airflow-init
+    depends_on:
+        - postgres
+    environment:
+        - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+        - AIRFLOW__CORE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres:5432/airflow
+        - AIRFLOW__CORE__LOAD_EXAMPLES=False
+        - AIRFLOW__WEBSERVER__SECRET_KEY=mysecretkey123
+    volumes:
+        - ./src/airflowScripts/dags:/opt/airflow/dags
+        - ./src/pythonScripts:/opt/airflow/src/pythonScripts
+        - ./sample:/opt/airflow/sample
+        - ./DB:/opt/airflow/DB
+        - ./outputs:/opt/airflow/outputs
+        - ./logs:/opt/airflow/logs
+        - ./plugins:/opt/airflow/plugins
+    command: bash -c "airflow db init && airflow users create --username admin --firstname Admin --lastname User --role Admin --email admin@example.com --password admin"
+
+  # --- Airflow Webserver ---
+  airflow-webserver:
+    build:
+        context: .                # project root as build context
+        dockerfile: dockerFiles/Dockerfile
+    image: custom-airflow:latest
+    container_name: airflow-webserver
+    depends_on:
+        - postgres
+    environment:
+        - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+        - AIRFLOW__CORE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres:5432/airflow
+        - AIRFLOW__CORE__LOAD_EXAMPLES=False
+        - AIRFLOW__WEBSERVER__SECRET_KEY=mysecretkey123
+    volumes:
+        - ./src/airflowScripts/dags:/opt/airflow/dags
+        - ./src/pythonScripts:/opt/airflow/src/pythonScripts
+        - ./sample:/opt/airflow/sample
+        - ./DB:/opt/airflow/DB
+        - ./outputs:/opt/airflow/outputs
+        - ./logs:/opt/airflow/logs
+        - ./plugins:/opt/airflow/plugins
+
+    ports:
+      - "8080:8080"
+    command: webserver
+
+  # --- Airflow Scheduler ---
+  airflow-scheduler:
+    build:
+        context: .                # project root as build context
+        dockerfile: dockerFiles/Dockerfile
+    image: custom-airflow:latest
+    container_name: airflow-scheduler
+    depends_on:
+        - postgres
+    environment:
+        - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+        - AIRFLOW__CORE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres:5432/airflow
+        - AIRFLOW__CORE__LOAD_EXAMPLES=False
+        - AIRFLOW__WEBSERVER__SECRET_KEY=mysecretkey123
+    volumes:
+        - ./src/airflowScripts/dags:/opt/airflow/dags
+        - ./src/pythonScripts:/opt/airflow/src/pythonScripts
+        - ./sample:/opt/airflow/sample
+        - ./DB:/opt/airflow/DB
+        - ./outputs:/opt/airflow/outputs
+        - ./logs:/opt/airflow/logs
+        - ./plugins:/opt/airflow/plugins
+
+    command: scheduler
