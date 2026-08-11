@@ -1,0 +1,17 @@
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  # Kafka broker throughput/health (via kafka-exporter, since Kafka has no native /metrics)
+  - job_name: 'kafka'
+    static_configs:
+      - targets: ['kafka-exporter:9308']
+
+  # Spark structured streaming job
+  # Requires spark-submit run with: --conf spark.metrics.conf=/opt/spark/conf/metrics.properties
+  - job_name: 'spark-streaming'
+    metrics_path: /metrics/applications/prometheus
+    static_configs:
+      - targets: ['spark-master:4040']
+
+# Airflow and MLflow scrape targets intentionally not added yet.
