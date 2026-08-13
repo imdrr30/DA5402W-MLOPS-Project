@@ -66,5 +66,92 @@ find . -type d -name "__pycache__" -exec rm -rf {} +
 find . -type f -name "*.pyc" -delete
 
 
+=============================
 
+
+
+mkdir airflow
+cd airflow
+mkdir -p logs plugins outputs DB
+
+docker compose -f docker_compose.yaml down
+sudo chown -R 50000:0 logs plugins outputs DB src/airflowScripts/dags
+
+docker compose -f docker_compose.yaml up -d postgres
+docker compose -f docker_compose.yaml up airflow-init
+docker compose -f docker_compose.yaml up -d airflow-webserver airflow-scheduler
+docker compose -f docker_compose.yaml logs airflow-scheduler --tail=50
+
+
+
+
+docker compose -f ./docker_compose.yaml build --no-cache topic-init
+docker compose -f ./docker_compose.yaml up -d topic-init
+docker compose -f ./docker_compose.yaml logs topic-init
+docker compose -f ./docker_compose.yaml ps
+<!-- docker compose -f ./docker_compose.yaml build --no-cache topic-init -->
+docker compose -f ./docker_compose.yaml up -d spark
+docker compose -f ./docker_compose.yaml logs -f spark
+
+docker exec kafka /opt/kafka/bin/kafka-topics.sh \
+  --bootstrap-server localhost:9092 \
+  --list
+
+------------------
+
+docker exec kafka /opt/kafka/bin/kafka-topics.sh \
+  --bootstrap-server localhost:9092 \
+  --list
+
+docker exec kafka /opt/kafka/bin/kafka-topics.sh \
+  --bootstrap-server localhost:9092 \
+  --delete \
+  --topic user-events
+
+docker exec kafka /opt/kafka/bin/kafka-topics.sh \
+  --bootstrap-server localhost:9092 \
+  --delete \
+  --topic recommendation-actions
+
+docker exec kafka /opt/kafka/bin/kafka-topics.sh \
+  --bootstrap-server localhost:9092 \
+  --delete \
+  --topic notification-events
+
+
+sudo rm -rf DB/* outputs/* output/* checkpoints/* spark-warehouse .metastore_db
+sudo find . -name "*.crc" -delete
+find . -type d -name "__pycache__" -exec rm -rf {} +
+find . -type f -name "*.pyc" -delete
+
+
+docker compose -f docker_compose.yaml build --no-cache
+docker compose -f docker_compose.yaml down
+
+docker compose -f docker_compose.yaml up -d postgres
+docker compose -f docker_compose.yaml logs postgres
+docker compose -f docker_compose.yaml up -d topic-init
+docker compose -f docker_compose.yaml logs topic-init
+docker compose -f docker_compose.yaml up airflow-init
+docker compose -f docker_compose.yaml logs airflow-init
+docker compose -f docker_compose.yaml up -d spark
+docker compose -f docker_compose.yaml logs -f spark
+
+docker compose -f docker_compose.yaml up -d airflow-webserver airflow-scheduler
+
+
+docker exec kafka /opt/kafka/bin/kafka-topics.sh \
+  --bootstrap-server localhost:9092 \
+  --list
+
+
+------------------
+
+docker exec spark-master rm -rf /DB/topic_dumps/user_events
+docker exec spark-master rm -rf /DB/topic_dumps/recommendation_events
+docker exec spark-master rm -rf /DB/topic_dumps/notification_events
+
+docker exec spark-master rm -rf /checkpoints/dump_user_events
+docker exec spark-master rm -rf /checkpoints/dump_recommendation_events
+docker exec spark-master rm -rf /checkpoints/dump_notification_events
 

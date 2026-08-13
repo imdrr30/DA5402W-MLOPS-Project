@@ -31,11 +31,11 @@ logs/
 # runtime data
 tmp/
 output/
-outputs/
+outputs/*
 
 # spark checkpoints
-checkpoints/
 chk/
+checkpoints/*
 
 # windows files
 *Zone.Identifier
@@ -44,7 +44,8 @@ Thumbs.db
 Desktop.ini
 
 # data paths, DB
-DB/
+DB/*
+
 
 # Spark
 spark-warehouse/
