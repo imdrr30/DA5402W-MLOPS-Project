@@ -25,6 +25,9 @@ services:
 
   # --- OFFICIAL APACHE SPARK CONTAINER ---
   spark:
+    build:
+      context: .
+      dockerfile: dockerFiles/Dockerfile
     image: apache/spark:3.5.1  # Matches official image naming
     container_name: spark-master
     user: root  # Prevents local permission issues with volume mounting
@@ -33,6 +36,7 @@ services:
       - "4040:4040"  # Spark UI port for local apps
     volumes:
       # Maps local directories to Spark's official default workspace directory
+      - ./src:/opt/project/src
       - ./src/sparkScripts:/opt/spark/work-dir/scripts
       - ./outputs/sparkOutput:/opt/spark/work-dir/output
       - ./DB:/DB/
