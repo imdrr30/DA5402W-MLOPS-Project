@@ -1,0 +1,147 @@
+version: '3.8'
+
+networks:
+  spark-kafka-net:
+    driver: bridge
+
+services:
+  # --- KAFKA BROKER ---
+  kafka:
+    image: apache/kafka:3.7.0
+    container_name: kafka
+    ports:
+      - "9094:9094"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093,EXTERNAL://0.0.0.0:9094
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://localhost:9094
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    networks:
+      - spark-kafka-net
+
+  # --- OFFICIAL APACHE SPARK CONTAINER ---
+  spark:
+    build:
+      context: .
+      dockerfile: docker/spark/Dockerfile
+    image: apache/spark:3.5.1  # Matches official image naming
+    container_name: spark-master
+    user: root  # Prevents local permission issues with volume mounting
+    command: tail -f /dev/null
+    ports:
+      - "4040:4040"  # Spark UI port for local apps
+    volumes:
+      # Maps local directories to Spark's official default workspace directory
+      - ./src:/opt/project/src
+      - ./src/sparkScripts:/opt/spark/work-dir/scripts
+      - ./outputs/sparkOutput:/opt/spark/work-dir/output
+      - ./DB:/DB/
+      - ./lookupData:/lookupData
+    networks:
+      - spark-kafka-net
+
+  # --- MLFLOW TRACKING SERVER ---
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:latest
+    container_name: mlflow
+    command: mlflow server --host 0.0.0.0 --port 5000 --backend-store-uri sqlite:////mlflow/mlflow.db --default-artifact-root /mlflow/artifacts
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./outputs/mlruns:/mlflow
+    networks:
+      - spark-kafka-net
+   
+
+  # --- Airflow Metadata DB ---
+  postgres:
+    image: postgres:13
+    container_name: airflow-postgres
+    environment:
+      - POSTGRES_USER=airflow
+      - POSTGRES_PASSWORD=airflow
+      - POSTGRES_DB=airflow
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./postgres_data:/var/lib/postgresql/data
+
+  # --- Airflow Init (DB + Admin User) ---
+  airflow-init:
+    build:
+        context: .                # project root as build context
+        dockerfile: docker/airflow/Dockerfile
+    image: custom-airflow:latest
+    container_name: airflow-init
+    depends_on:
+        - postgres
+    environment:
+        - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+        - AIRFLOW__CORE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres:5432/airflow
+        - AIRFLOW__CORE__LOAD_EXAMPLES=False
+        - AIRFLOW__WEBSERVER__SECRET_KEY=mysecretkey123
+    volumes:
+        - ./src/airflowScripts/dags:/opt/airflow/dags
+        - ./src/pythonScripts:/opt/airflow/src/pythonScripts
+        - ./sample:/opt/airflow/sample
+        - ./DB:/opt/airflow/DB
+        - ./outputs:/opt/airflow/outputs
+        - ./logs:/opt/airflow/logs
+        - ./plugins:/opt/airflow/plugins
+    command: bash -c "airflow db init && airflow users create --username admin --firstname Admin --lastname User --role Admin --email admin@example.com --password admin"
+
+  # --- Airflow Webserver ---
+  airflow-webserver:
+    build:
+        context: .                # project root as build context
+        dockerfile: docker/airflow/Dockerfile
+    image: custom-airflow:latest
+    container_name: airflow-webserver
+    depends_on:
+        - postgres
+    environment:
+        - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+        - AIRFLOW__CORE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres:5432/airflow
+        - AIRFLOW__CORE__LOAD_EXAMPLES=False
+        - AIRFLOW__WEBSERVER__SECRET_KEY=mysecretkey123
+    volumes:
+        - ./src/airflowScripts/dags:/opt/airflow/dags
+        - ./src/pythonScripts:/opt/airflow/src/pythonScripts
+        - ./sample:/opt/airflow/sample
+        - ./DB:/opt/airflow/DB
+        - ./outputs:/opt/airflow/outputs
+        - ./logs:/opt/airflow/logs
+        - ./plugins:/opt/airflow/plugins
+
+    ports:
+      - "8080:8080"
+    command: webserver
+
+  # --- Airflow Scheduler ---
+  airflow-scheduler:
+    build:
+        context: .                # project root as build context
+        dockerfile: docker/airflow/Dockerfile
+    image: custom-airflow:latest
+    container_name: airflow-scheduler
+    depends_on:
+        - postgres
+    environment:
+        - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+        - AIRFLOW__CORE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres:5432/airflow
+        - AIRFLOW__CORE__LOAD_EXAMPLES=False
+        - AIRFLOW__WEBSERVER__SECRET_KEY=mysecretkey123
+    volumes:
+        - ./src/airflowScripts/dags:/opt/airflow/dags
+        - ./src/pythonScripts:/opt/airflow/src/pythonScripts
+        - ./sample:/opt/airflow/sample
+        - ./DB:/opt/airflow/DB
+        - ./outputs:/opt/airflow/outputs
+        - ./logs:/opt/airflow/logs
+        - ./plugins:/opt/airflow/plugins
+
+    command: scheduler
