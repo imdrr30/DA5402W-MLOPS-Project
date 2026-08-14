@@ -127,16 +127,14 @@ class User(db.Model):
 
 class Event(db.Model):
     __tablename__ = "events"
-    id = db.Column(db.Integer, primary_key=True)
+    id = db.Column(db.BigInteger, primary_key=True)
     visitor_id = db.Column(db.String(100), nullable=True)
-    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
+    user_id = db.Column(db.String(100), nullable=True)
     timestamp = db.Column(db.DateTime, default=func.now())
     event_type = db.Column(db.String(50))
-    product_id = db.Column(db.Integer, db.ForeignKey("products.id"), nullable=True)
-    order_id_for_refund = db.Column(db.Integer, nullable=True)
+    product_id = db.Column(db.Integer, nullable=True)
+    order_id_for_refund = db.Column(db.String(100), nullable=True)
     is_recommended = db.Column(db.Boolean, default=False)
-    user = db.relationship("User", backref=db.backref("events", lazy=True))
-    product = db.relationship("Product", backref=db.backref("events", lazy=True))
 
     def to_dict(self):
         return {
@@ -555,7 +553,7 @@ def daily_report():
     try:
         total_rev = (
             db.session.query(func.coalesce(func.sum(Product.price), 0))
-            .select_from(Event).join(Product)
+            .select_from(Event).join(Product, Event.product_id == Product.id)
             .filter(Event.event_type == "transaction", func.date(Event.timestamp) == target_date)
             .scalar()
         )
@@ -566,7 +564,7 @@ def daily_report():
         )
         rec_rev = (
             db.session.query(func.coalesce(func.sum(Product.price), 0))
-            .select_from(Event).join(Product)
+            .select_from(Event).join(Product, Event.product_id == Product.id)
             .filter(Event.event_type == "transaction", Event.is_recommended.is_(True), func.date(Event.timestamp) == target_date)
             .scalar()
         )

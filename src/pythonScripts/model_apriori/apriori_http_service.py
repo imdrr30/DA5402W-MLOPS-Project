@@ -75,8 +75,11 @@ def predict(request: BasketRequest) -> BasketResponse:
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Prediction failed: {e}")
 
-    # Flatten result — model returns list of recommended item ID strings
-    if isinstance(result, list):
+    # Model returns DataFrame({"predicted_items": list[list[str]]}) per apriori_mlflow_predict.py contract
+    if isinstance(result, pd.DataFrame) and "predicted_items" in result.columns:
+        nested = result["predicted_items"].tolist()
+        flat = [str(x) for sublist in nested for x in (sublist if isinstance(sublist, list) else [sublist])]
+    elif isinstance(result, list):
         flat = [str(x) for sublist in result for x in (sublist if isinstance(sublist, list) else [sublist])]
     elif hasattr(result, "tolist"):
         flat = [str(x) for x in result.tolist()]

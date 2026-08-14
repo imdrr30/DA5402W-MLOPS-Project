@@ -36,6 +36,7 @@ def compute_user_features(events_path: str = None, output_path: str = None) -> p
 
     # ---------------------------------------------------------------------------
     # Per-user aggregations
+    # rec_shown/rec_clicked are 0 if source file only contains user-events (not recommendation-actions topic)
     # ---------------------------------------------------------------------------
     agg = df.groupby("user_id").agg(
         total_events=("event_type", "count"),

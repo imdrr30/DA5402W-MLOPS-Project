@@ -35,10 +35,10 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE TABLE IF NOT EXISTS events (
     id                  BIGINT PRIMARY KEY,
     visitor_id          TEXT,
-    user_id             INTEGER REFERENCES users(id),
+    user_id             TEXT,
     timestamp           TIMESTAMPTZ,
     event_type          TEXT,
-    product_id          INTEGER REFERENCES products(id),
+    product_id          INTEGER,
     order_id_for_refund TEXT,
     is_recommended      BOOLEAN DEFAULT FALSE
 );

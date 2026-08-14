@@ -1,6 +1,8 @@
 import os
 import sys
 import time
+import io
+import csv
 import psycopg2
 
 SEED_DIR = os.environ.get("SEED_DIR", "/seed")
@@ -54,12 +56,19 @@ def seed(conn: psycopg2.extensions.connection) -> None:
                 )
 
         print("Seeding users...")
+        # Strip whitespace from each field to handle " false" boolean values in CSV
         with open(os.path.join(SEED_DIR, "users.csv"), "r", encoding="utf-8") as f:
+            reader = csv.reader(f)
+            buf = io.StringIO()
+            writer = csv.writer(buf)
+            for row in reader:
+                writer.writerow([field.strip() for field in row])
+            buf.seek(0)
             cur.copy_expert(
                 """COPY users (id, first_name, last_name, email, phone_number,
                    region, country, hashed_password, is_deleted)
                    FROM STDIN WITH (FORMAT CSV, HEADER)""",
-                f,
+                buf,
             )
 
         print("Seeding events...")
