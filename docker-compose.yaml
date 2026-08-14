@@ -45,17 +45,84 @@ services:
       - spark-kafka-net
 
   # --- MLFLOW TRACKING SERVER ---
+  # --- MLflow Metadata DB ---
+  mlflow-postgres:
+    image: postgres:13
+    container_name: mlflow-postgres
+    environment:
+      - POSTGRES_USER=mlflow
+      - POSTGRES_PASSWORD=mlflow
+      - POSTGRES_DB=mlflowdb
+    ports:
+      - "5434:5432"
+    volumes:
+      - ./mlflow_data:/var/lib/postgresql/data
+    networks:
+      - spark-kafka-net
+
+  # --- MLFLOW TRACKING SERVER ---
   mlflow:
     image: ghcr.io/mlflow/mlflow:latest
     container_name: mlflow
-    command: mlflow server --host 0.0.0.0 --port 5000 --backend-store-uri sqlite:////mlflow/mlflow.db --default-artifact-root /mlflow/artifacts
+    depends_on:
+      - mlflow-postgres
+    command: >-
+      bash -c "pip install psycopg2-binary -q &&
+      mlflow server
+      --host 0.0.0.0
+      --port 5000
+      --backend-store-uri postgresql://mlflow:mlflow@mlflow-postgres:5432/mlflowdb
+      --default-artifact-root /mlflow/artifacts"
     ports:
       - "5000:5000"
     volumes:
-      - ./outputs/mlruns:/mlflow
+      - ./outputs/mlruns:/mlflow/artifacts
     networks:
       - spark-kafka-net
    
+
+  # --- EcomBackend ---
+  ecomm-backend:
+    build:
+      context: .
+      dockerfile: ./docker/flask-backend/Dockerfile
+    container_name: ecomm-backend
+    depends_on:
+      - ecomm-postgres
+      - kafka
+    environment:
+      - DB_HOST=ecomm-postgres
+      - DB_USER=ecomm
+      - DB_PASSWORD=ecomm
+      - DB_NAME=ecommdb
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - AIRFLOW_URL=http://airflow-webserver:8080
+      - AIRFLOW_USER=admin
+      - AIRFLOW_PASSWORD=admin
+      - SEED_DIR=/seed
+    volumes:
+      - ./DB/seed:/seed
+    ports:
+      - "5001:5001"
+    networks:
+      - spark-kafka-net
+
+  # --- EcommDB ---
+  ecomm-postgres:
+    image: postgres:13
+    container_name: ecomm-postgres
+    environment:
+      - POSTGRES_USER=ecomm
+      - POSTGRES_PASSWORD=ecomm
+      - POSTGRES_DB=ecommdb
+    ports:
+      - "5433:5432"
+    volumes:
+      - ./DB/init:/docker-entrypoint-initdb.d
+      - ./DB/seed:/seed
+      - ./ecomm_data:/var/lib/postgresql/data
+    networks:
+      - spark-kafka-net
 
   # --- Airflow Metadata DB ---
   postgres:
