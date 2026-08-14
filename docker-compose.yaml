@@ -54,8 +54,6 @@ services:
       - POSTGRES_DB=mlflowdb
     ports:
       - "5434:5432"
-    volumes:
-      - ./mlflow_data:/var/lib/postgresql/data
     networks:
       - spark-kafka-net
 
@@ -159,6 +157,20 @@ services:
     networks:
       - spark-kafka-net
 
+  # --- pgweb (EcommDB browser for testing) ---
+  pgweb:
+    image: sosedoff/pgweb
+    container_name: pgweb
+    depends_on:
+      ecomm-backend:
+        condition: service_started
+    environment:
+      - DATABASE_URL=postgres://ecomm:ecomm@ecomm-postgres:5432/ecommdb?sslmode=disable
+    ports:
+      - "8081:8081"
+    networks:
+      - spark-kafka-net
+
   # --- EcommDB ---
   ecomm-postgres:
     image: postgres:13
@@ -172,7 +184,6 @@ services:
     volumes:
       - ./DB/init:/docker-entrypoint-initdb.d
       - ./DB/seed:/seed
-      - ./ecomm_data:/var/lib/postgresql/data
     networks:
       - spark-kafka-net
 
@@ -186,15 +197,12 @@ services:
       - POSTGRES_DB=airflow
     ports:
       - "5432:5432"
-    volumes:
-      - ./postgres_data:/var/lib/postgresql/data
 
   # --- Airflow Init (DB + Admin User) ---
   airflow-init:
     build:
         context: .                # project root as build context
         dockerfile: docker/airflow/Dockerfile
-    image: custom-airflow:latest
     container_name: airflow-init
     depends_on:
         - postgres
@@ -218,10 +226,12 @@ services:
     build:
         context: .                # project root as build context
         dockerfile: docker/airflow/Dockerfile
-    image: custom-airflow:latest
     container_name: airflow-webserver
     depends_on:
-        - postgres
+        airflow-init:
+          condition: service_completed_successfully
+        postgres:
+          condition: service_started
     environment:
         - AIRFLOW__CORE__EXECUTOR=LocalExecutor
         - AIRFLOW__CORE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres:5432/airflow
@@ -245,10 +255,12 @@ services:
     build:
         context: .                # project root as build context
         dockerfile: docker/airflow/Dockerfile
-    image: custom-airflow:latest
     container_name: airflow-scheduler
     depends_on:
-        - postgres
+        airflow-init:
+          condition: service_completed_successfully
+        postgres:
+          condition: service_started
     environment:
         - AIRFLOW__CORE__EXECUTOR=LocalExecutor
         - AIRFLOW__CORE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres:5432/airflow
