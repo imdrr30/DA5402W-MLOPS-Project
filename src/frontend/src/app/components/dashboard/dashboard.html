@@ -71,63 +71,7 @@
       </div>
 
       <!-- MLOps Control Panel -->
-      <div class="glass-panel" style="padding: 24px; border-radius: var(--border-radius-md); margin-top: 20px;">
-        <h3 style="font-size: 18px; font-weight: 700; margin-bottom: 16px; border-bottom: 1px solid var(--glass-border); padding-bottom: 8px; color: var(--accent-primary);">
-          MLOps Controls
-        </h3>
 
-        <!-- Model Retraining Section -->
-        <div style="margin-bottom: 24px;">
-          <button (click)="onTrainModel()" [disabled]="isTraining()" class="btn-primary animate-pulse" style="width: 100%; height: 40px; font-size: 14px;">
-            {{ isTraining() ? 'Retraining...' : 'Train Recommender' }}
-          </button>
-          
-          <div *ngIf="trainingResults()" style="margin-top: 12px; font-size: 12px; color: var(--text-secondary); background: rgba(0,0,0,0.2); padding: 10px; border-radius: 6px; border: 1px dashed var(--glass-border);">
-            <p style="margin: 2px 0;"><strong>Status:</strong> Success</p>
-            <p style="margin: 2px 0;"><strong>Bandit Recs:</strong> {{ trainingResults().recommender_items }} items</p>
-            <p style="margin: 2px 0;"><strong>Churn Acc:</strong> {{ trainingResults().churn_accuracy | number:'1.2-2' }}</p>
-            <p style="margin: 2px 0;"><strong>Cart Acc:</strong> {{ trainingResults().abandon_accuracy | number:'1.2-2' }}</p>
-          </div>
-        </div>
-
-        <!-- Simulator Section -->
-        <div>
-          <h4 style="font-size: 14px; font-weight: 600; margin-bottom: 8px; color: var(--text-primary);">
-            User Activity Simulator
-          </h4>
-          <p style="font-size: 12px; color: var(--text-secondary); margin-bottom: 12px; line-height: 1.4;">
-            Injects 1000 users and streams 15 days of events to Kafka/Spark.
-          </p>
-          
-          <button (click)="onStartSimulation()" [disabled]="simRunning()" class="btn-secondary" style="width: 100%; height: 40px; font-size: 14px; display: flex; align-items: center; justify-content: center; gap: 8px;">
-            <span>{{ simRunning() ? 'Injecting...' : 'Start Simulation' }}</span>
-          </button>
-
-          <!-- Simulation Progress Display -->
-          <div *ngIf="simStatus() && simStatus().status !== 'idle'" style="margin-top: 12px; background: rgba(0,0,0,0.25); padding: 12px; border-radius: 8px; border: 1px solid var(--glass-border);">
-            <div style="display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 6px;">
-              <span style="color: var(--accent-secondary); font-weight: 600; text-transform: uppercase;">
-                {{ simStatus().status }}
-              </span>
-              <span style="color: var(--text-primary); font-weight: bold;">
-                {{ simStatus().progress }}%
-              </span>
-            </div>
-            
-            <!-- Progress Bar -->
-            <div style="background: rgba(255,255,255,0.05); height: 8px; border-radius: 4px; overflow: hidden; margin-bottom: 8px;">
-              <div [style.width.%]="simStatus().progress" style="background: linear-gradient(90deg, var(--accent-primary) 0%, var(--accent-secondary) 100%); height: 100%; transition: width 0.3s ease;"></div>
-            </div>
-
-            <p style="font-size: 11px; color: var(--text-primary); margin: 0; line-height: 1.3;">
-              {{ simStatus().message }}
-            </p>
-            <p *ngIf="simStatus().events_sent > 0" style="font-size: 11px; color: var(--text-secondary); margin: 4px 0 0 0;">
-              <strong>Events streamed:</strong> {{ simStatus().events_sent }}
-            </p>
-          </div>
-        </div>
-      </div>
     </aside>
 
     <!-- Main Content Area -->
