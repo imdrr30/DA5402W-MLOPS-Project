@@ -25,6 +25,9 @@ services:
 
   # --- OFFICIAL APACHE SPARK CONTAINER ---
   spark:
+    build:
+      context: .
+      dockerfile: docker/spark/Dockerfile
     image: apache/spark:3.5.1  # Matches official image naming
     container_name: spark-master
     user: root  # Prevents local permission issues with volume mounting
@@ -33,6 +36,7 @@ services:
       - "4040:4040"  # Spark UI port for local apps
     volumes:
       # Maps local directories to Spark's official default workspace directory
+      - ./src:/opt/project/src
       - ./src/sparkScripts:/opt/spark/work-dir/scripts
       - ./outputs/sparkOutput:/opt/spark/work-dir/output
       - ./DB:/DB/
@@ -70,7 +74,7 @@ services:
   airflow-init:
     build:
         context: .                # project root as build context
-        dockerfile: dockerFiles/Dockerfile
+        dockerfile: docker/airflow/Dockerfile
     image: custom-airflow:latest
     container_name: airflow-init
     depends_on:
@@ -94,7 +98,7 @@ services:
   airflow-webserver:
     build:
         context: .                # project root as build context
-        dockerfile: dockerFiles/Dockerfile
+        dockerfile: docker/airflow/Dockerfile
     image: custom-airflow:latest
     container_name: airflow-webserver
     depends_on:
@@ -121,7 +125,7 @@ services:
   airflow-scheduler:
     build:
         context: .                # project root as build context
-        dockerfile: dockerFiles/Dockerfile
+        dockerfile: docker/airflow/Dockerfile
     image: custom-airflow:latest
     container_name: airflow-scheduler
     depends_on:
