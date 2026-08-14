@@ -28,7 +28,6 @@ services:
     build:
       context: .
       dockerfile: docker/spark/Dockerfile
-    image: apache/spark:3.5.1  # Matches official image naming
     container_name: spark-master
     user: root  # Prevents local permission issues with volume mounting
     command: tail -f /dev/null
