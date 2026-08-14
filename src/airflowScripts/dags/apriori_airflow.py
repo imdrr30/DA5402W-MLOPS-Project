@@ -5,10 +5,6 @@ from airflow.operators.bash import BashOperator
 from datetime import datetime
 import os
 
-# Define root directory once
-PROJECT_ROOT = "/opt/airflow/dags"
-
-
 default_args = {
     "owner": "samuel",
     "depends_on_past": False,
@@ -17,31 +13,47 @@ default_args = {
 }
 
 with DAG(
-    dag_id="apriori_pipeline",
+    dag_id="mlops_pipeline",
     default_args=default_args,
-    description="Pipeline for Apriori feature engineering, training, serving, and prediction",
-    schedule_interval=None,
+    description="Recommendation (Apriori) + Customer Value Scoring pipeline",
+    schedule_interval="*/5 * * * *",
     catchup=False,
 ) as dag:
 
-    # 1. Feature Engineering
+    # -----------------------------------------------------------------------
+    # Branch A: Recommendation (Apriori)
+    # -----------------------------------------------------------------------
     feature_task = BashOperator(
         task_id="feature_engineering",
-        bash_command="python /opt/airflow/src/pythonScripts/feature.py"
+        bash_command="python /opt/airflow/src/pythonScripts/feature.py",
     )
 
-    # 2. Train Apriori Model
-    train_task = BashOperator(
+    train_apriori = BashOperator(
         task_id="train_apriori",
         bash_command="/usr/local/bin/python /opt/airflow/src/pythonScripts/model_apriori/train_model_apriori.py",
-        dag=dag,
     )
 
-    # 4. MLflow Prediction
-    predict_task = BashOperator(
-        task_id="mlflow_predict",
-        bash_command="python /opt/airflow/src/pythonScripts/model_apriori/apriori_mlflow_predict.py"
+    publish_recommendation = BashOperator(
+        task_id="publish_recommendation",
+        bash_command="python /opt/airflow/src/pythonScripts/model_apriori/apriori_mlflow_predict.py",
     )
 
-    # Define dependencies
-    feature_task >> train_task >> predict_task
+    # -----------------------------------------------------------------------
+    # Branch B: Customer Value Scoring (Churn)
+    # -----------------------------------------------------------------------
+    feature_churn = BashOperator(
+        task_id="feature_churn",
+        bash_command="python /opt/airflow/src/pythonScripts/model_churn/feature_churn.py",
+    )
+
+    train_churn = BashOperator(
+        task_id="train_churn",
+        bash_command="python /opt/airflow/src/pythonScripts/model_churn/train_churn_model.py",
+    )
+
+    # -----------------------------------------------------------------------
+    # Dependencies — both branches run in parallel after features are ready
+    # -----------------------------------------------------------------------
+    feature_task >> train_apriori >> publish_recommendation
+    feature_churn >> train_churn
+

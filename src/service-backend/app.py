@@ -1,5 +1,6 @@
 import os
 import json
+import requests as http_requests
 from datetime import datetime, date, timedelta
 from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
@@ -23,6 +24,8 @@ db = SQLAlchemy(app)
 
 # ---------------------------------------------------------------------------
 # Kafka producer (optional — backend still works without Kafka)
+APRIORI_API_URL = os.environ.get("APRIORI_API_URL", "http://apriori-api:5002")
+
 # ---------------------------------------------------------------------------
 kafka_servers = os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
 kafka_producer = None
@@ -411,49 +414,49 @@ def make_transaction():
     return jsonify({"message": "Transaction successful. Cart cleared."}), 200
 
 
-# 11. Recommendations (precomputed → co-occurrence → category popularity → global fallback)
+# 11. Recommendations (Apriori model → precomputed scores → co-occurrence → category popularity → global fallback)
 @app.route("/api/recommendations", methods=["GET"])
 def get_recommendations():
     user_id = request.args.get("user_id", type=int)
     visitor_id = request.args.get("visitor_id", type=str)
     limit = request.args.get("limit", 8, type=int)
 
-    if user_id:
-        precomputed = (
-            RecommendationScore.query.filter_by(user_id=user_id)
-            .order_by(RecommendationScore.score.desc())
-            .limit(limit)
-            .all()
-        )
-        if precomputed:
-            products_list = [item.product.to_dict() for item in precomputed if item.product]
-            if products_list:
-                return jsonify(products_list)
-
+    # Resolve recent product interactions for this user/visitor
     interacted_products = []
     if user_id:
-        events = (
-            Event.query.filter_by(user_id=user_id)
-            .filter(Event.product_id.isnot(None))
-            .order_by(Event.timestamp.desc())
-            .limit(5)
-            .all()
-        )
+        events = (Event.query.filter_by(user_id=user_id)
+                  .filter(Event.product_id.isnot(None))
+                  .order_by(Event.timestamp.desc()).limit(10).all())
         interacted_products = [e.product_id for e in events if e.product_id]
     elif visitor_id:
-        events = (
-            Event.query.filter_by(visitor_id=visitor_id)
-            .filter(Event.product_id.isnot(None))
-            .order_by(Event.timestamp.desc())
-            .limit(5)
-            .all()
-        )
+        events = (Event.query.filter_by(visitor_id=visitor_id)
+                  .filter(Event.product_id.isnot(None))
+                  .order_by(Event.timestamp.desc()).limit(10).all())
         interacted_products = [e.product_id for e in events if e.product_id]
 
-    recommendations = []
-
-    # Strategy 1: co-occurrence collaborative filtering
+    # --- Strategy 0: Apriori association-rules model ---
+    apriori_product_ids = []
     if interacted_products:
+        try:
+            resp = http_requests.post(
+                f"{APRIORI_API_URL}/predict",
+                json={"items": interacted_products},
+                timeout=3,
+            )
+            if resp.status_code == 200:
+                apriori_product_ids = [
+                    int(x) for x in resp.json().get("predicted_items", [])
+                    if str(x).isdigit()
+                ]
+        except Exception:
+            pass  # Apriori service unavailable — continue to fallback
+
+    recommendations = []
+    if apriori_product_ids:
+        recommendations = Product.query.filter(Product.id.in_(apriori_product_ids)).limit(limit).all()
+
+    # Strategy 1: co-occurrence collaborative filtering (only if Apriori didn't fill results)
+    if len(recommendations) < limit and interacted_products:
         users_sub = (
             db.session.query(Event.user_id)
             .filter(Event.product_id.in_(interacted_products))
@@ -479,7 +482,12 @@ def get_recommendations():
             .all()
         )
         if co_occurring:
-            recommendations = Product.query.filter(Product.id.in_([p[0] for p in co_occurring])).all()
+            existing_ids = [p.id for p in recommendations]
+            co_prods = Product.query.filter(
+                Product.id.in_([p[0] for p in co_occurring]),
+                ~Product.id.in_(existing_ids + interacted_products)
+            ).limit(limit - len(recommendations)).all()
+            recommendations.extend(co_prods)
 
     # Strategy 2: category-based popularity
     if len(recommendations) < limit and interacted_products:
@@ -519,7 +527,7 @@ def get_recommendations():
 def trigger_training():
     import requests as http_requests
     airflow_url = os.environ.get("AIRFLOW_URL", "http://airflow-webserver:8080")
-    dag_id = "apriori_pipeline"
+    dag_id = "mlops_pipeline"
     try:
         resp = http_requests.post(
             f"{airflow_url}/api/v1/dags/{dag_id}/dagRuns",

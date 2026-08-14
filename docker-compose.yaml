@@ -81,6 +81,30 @@ services:
       - spark-kafka-net
    
 
+  # --- Churn Notifier (cart abandonment → discount email simulation) ---
+  churn-notifier:
+    build:
+      context: .
+      dockerfile: docker/churn-notifier/Dockerfile
+    container_name: churn-notifier
+    depends_on:
+      - kafka
+      - ecomm-postgres
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - DB_HOST=ecomm-postgres
+      - DB_USER=ecomm
+      - DB_PASSWORD=ecomm
+      - DB_NAME=ecommdb
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+      - FEATURES_PATH=/features/user_value_features.csv
+      - ABANDONMENT_MINUTES=15
+      - CHECK_INTERVAL_SECONDS=60
+    volumes:
+      - ./DB:/features
+    networks:
+      - spark-kafka-net
+
   # --- Angular Frontend ---
   frontend:
     build:
@@ -91,6 +115,21 @@ services:
       - ecomm-backend
     ports:
       - "4200:4200"
+    networks:
+      - spark-kafka-net
+
+  # --- Apriori Recommendation API ---
+  apriori-api:
+    build:
+      context: .
+      dockerfile: docker/apriori-api/Dockerfile
+    container_name: apriori-api
+    depends_on:
+      - mlflow
+    environment:
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+    ports:
+      - "5002:5002"
     networks:
       - spark-kafka-net
 
@@ -113,6 +152,7 @@ services:
       - AIRFLOW_USER=admin
       - AIRFLOW_PASSWORD=admin
       - SEED_DIR=/seed
+      - APRIORI_API_URL=http://apriori-api:5002
     volumes:
       - ./DB/seed:/seed
     ports:

@@ -1,12 +1,40 @@
 import os
+import logging
+from contextlib import asynccontextmanager
 from typing import Any
-from urllib.parse import urlparse, urlunparse
 
-import requests
+import mlflow.pyfunc
+import pandas as pd
 import uvicorn
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+
+log = logging.getLogger("apriori-api")
+logging.basicConfig(level=logging.INFO)
+
+MLFLOW_TRACKING_URI = os.getenv("MLFLOW_TRACKING_URI", "http://mlflow:5000")
+MODEL_NAME = "AprioriRecommender"
+MODEL_ALIAS = "champion"
+
+_model = None
+
+
+def load_model() -> None:
+    global _model
+    import mlflow
+    mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
+    try:
+        _model = mlflow.pyfunc.load_model(f"models:/{MODEL_NAME}@{MODEL_ALIAS}")
+        log.info("Loaded %s@%s from MLflow.", MODEL_NAME, MODEL_ALIAS)
+    except Exception as e:
+        log.warning("Could not load model from MLflow: %s. Will retry on first request.", e)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    load_model()
+    yield
 
 
 class BasketRequest(BaseModel):
@@ -14,70 +42,50 @@ class BasketRequest(BaseModel):
 
 
 class BasketResponse(BaseModel):
-    predicted_items: list[list[str]]
+    predicted_items: list[str]
 
 
-app = FastAPI(title="Apriori Recommender API")
+app = FastAPI(title="Apriori Recommender API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
 )
 
 
-def normalize_mlflow_serve_url(url: str) -> str:
-    parsed = urlparse(url)
-    if parsed.fragment or parsed.path.startswith("#/"):
-        parsed = parsed._replace(path="/invocations", fragment="")
-    elif not parsed.path or parsed.path == "/":
-        parsed = parsed._replace(path="/invocations")
-    elif not parsed.path.rstrip("/").endswith("/invocations"):
-        parsed = parsed._replace(path=parsed.path.rstrip("/") + "/invocations")
-    return urlunparse(parsed)
-
-
-MLFLOW_SERVE_URL = normalize_mlflow_serve_url(
-    os.getenv("MLFLOW_SERVE_URL", "http://127.0.0.1:5001/invocations")
-)
+@app.get("/health")
+def health():
+    return {"status": "ok", "model_loaded": _model is not None}
 
 
 @app.post("/predict", response_model=BasketResponse)
 def predict(request: BasketRequest) -> BasketResponse:
-    payload = {"dataframe_split": {"columns": ["items"], "data": [[request.items or []]]}}
+    global _model
+    if _model is None:
+        load_model()
+    if _model is None:
+        raise HTTPException(status_code=503, detail="Model not loaded yet. Run the Apriori training DAG first.")
 
+    items = [str(i) for i in (request.items or [])]
+    input_df = pd.DataFrame([{"items": items}])
     try:
-        response = requests.post(MLFLOW_SERVE_URL, json=payload, timeout=30)
-        response.raise_for_status()
-    except requests.RequestException as exc:
-        raise HTTPException(status_code=502, detail=f"MLflow serving request failed: {exc}") from exc
+        result = _model.predict(input_df)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Prediction failed: {e}")
 
-    try:
-        result = response.json()
-    except ValueError as exc:
-        raise HTTPException(status_code=502, detail="MLflow serving returned an invalid JSON response") from exc
-
-    if isinstance(result, dict):
-        if "predicted_items" in result:
-            return BasketResponse(predicted_items=result["predicted_items"])
-        if "predictions" in result:
-            predictions = result["predictions"]
-            if isinstance(predictions, list) and predictions:
-                first = predictions[0]
-                if isinstance(first, dict) and "predicted_items" in first:
-                    return BasketResponse(predicted_items=[item["predicted_items"] for item in predictions])
-                if all(isinstance(item, list) for item in predictions):
-                    return BasketResponse(predicted_items=predictions)
-            if isinstance(predictions, list):
-                return BasketResponse(predicted_items=predictions)
-
+    # Flatten result — model returns list of recommended item ID strings
     if isinstance(result, list):
-        return BasketResponse(predicted_items=result)
+        flat = [str(x) for sublist in result for x in (sublist if isinstance(sublist, list) else [sublist])]
+    elif hasattr(result, "tolist"):
+        flat = [str(x) for x in result.tolist()]
+    else:
+        flat = [str(result)]
 
-    raise HTTPException(status_code=502, detail="Unexpected response format from MLflow serving")
+    return BasketResponse(predicted_items=flat)
 
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=5002)
+
