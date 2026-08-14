@@ -1,0 +1,74 @@
+<div class="container animate-fade-in" style="min-height: 90vh; display: flex; align-items: center; justify-content: center; padding: 40px 0;">
+  <div class="glass-panel" style="width: 100%; max-width: 550px; padding: 40px; border-radius: var(--border-radius-md); box-shadow: 0 20px 50px rgba(0,0,0,0.5);">
+    <h2 class="glow-text" style="font-size: 26px; font-weight: 700; margin-bottom: 8px; text-align: center;">
+      Create Account
+    </h2>
+    <p style="color: var(--text-secondary); text-align: center; font-size: 14px; margin-bottom: 30px;">
+      Register as a user in the e-commerce recommendation system baseline.
+    </p>
+
+    <div *ngIf="errorMsg()" class="glass-card" style="padding: 12px 16px; border-color: rgba(239, 68, 68, 0.4); background: rgba(239, 68, 68, 0.1); color: #f87171; font-size: 14px; margin-bottom: 20px; border-radius: var(--border-radius-sm);">
+      {{ errorMsg() }}
+    </div>
+
+    <div *ngIf="successMsg()" class="glass-card" style="padding: 12px 16px; border-color: rgba(16, 185, 129, 0.4); background: rgba(16, 185, 129, 0.1); color: #34d399; font-size: 14px; margin-bottom: 20px; border-radius: var(--border-radius-sm);">
+      {{ successMsg() }}
+    </div>
+
+    <form (ngSubmit)="onSubmit()">
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+        <div class="form-group">
+          <label class="form-label">First Name *</label>
+          <input type="text" name="first_name" [(ngModel)]="first_name" class="form-input" placeholder="John" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Last Name *</label>
+          <input type="text" name="last_name" [(ngModel)]="last_name" class="form-input" placeholder="Doe" required>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Email Address *</label>
+        <input type="email" name="email" [(ngModel)]="email" class="form-input" placeholder="john.doe@example.com" required>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Phone Number</label>
+        <input type="text" name="phone_number" [(ngModel)]="phone_number" class="form-input" placeholder="+14155552671">
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+        <div class="form-group">
+          <label class="form-label">Region</label>
+          <select name="region" [(ngModel)]="region" class="form-input" style="background: var(--bg-tertiary);">
+            <option value="North America">North America</option>
+            <option value="Europe">Europe</option>
+            <option value="Asia">Asia</option>
+            <option value="South America">South America</option>
+            <option value="Africa">Africa</option>
+            <option value="Oceania">Oceania</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Country</label>
+          <input type="text" name="country" [(ngModel)]="country" class="form-input" placeholder="USA">
+        </div>
+      </div>
+
+      <div class="form-group" style="margin-bottom: 30px;">
+        <label class="form-label">Password *</label>
+        <input type="password" name="password" [(ngModel)]="password" class="form-input" placeholder="••••••••" required>
+      </div>
+
+      <button type="submit" class="btn-primary" [disabled]="loading()" style="width: 100%; justify-content: center; height: 48px;">
+        <span *ngIf="!loading()">Create Account</span>
+        <span *ngIf="loading()">Registering...</span>
+      </button>
+    </form>
+
+    <div style="margin-top: 24px; text-align: center; font-size: 14px; color: var(--text-secondary);">
+      Already have an account? 
+      <a routerLink="/login" class="nav-link" style="display: inline; color: var(--accent-primary); font-weight: 600;">Sign In</a>
+    </div>
+  </div>
+</div>

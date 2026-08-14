@@ -1,0 +1,64 @@
+<nav class="nav-bar glass-panel">
+  <div class="container nav-container">
+    
+    <!-- Brand Logo -->
+    <a routerLink="/" class="logo glow-text" style="text-decoration: none;">
+      MyComm
+    </a>
+
+    <!-- Navigation links -->
+    <ul class="nav-links">
+      <li>
+        <a routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{exact: true}" class="nav-link" style="text-decoration: none;">
+          Catalog
+        </a>
+      </li>
+      
+      <!-- Cart Link (only shown if logged in) -->
+      <li *ngIf="apiService.currentUser()">
+        <a routerLink="/cart" routerLinkActive="active" class="nav-link cart-icon-container" style="text-decoration: none;">
+          Shopping Cart
+          <span *ngIf="apiService.cartCount() > 0" class="cart-badge">
+            {{ apiService.cartCount() }}
+          </span>
+        </a>
+      </li>
+
+      <!-- Visitor tracking info -->
+      <li *ngIf="!apiService.currentUser()">
+        <span style="font-size: 13px; color: var(--text-muted); padding: 4px 8px; background: rgba(255,255,255,0.03); border: 1px solid var(--glass-border); border-radius: 4px;">
+          Session: {{ apiService.visitorId() }}
+        </span>
+      </li>
+
+      <!-- Auth Action Links -->
+      <li *ngIf="!apiService.currentUser()">
+        <a routerLink="/login" routerLinkActive="active" class="btn-secondary" style="padding: 6px 16px; font-size: 14px; text-decoration: none; border-radius: var(--border-radius-sm);">
+          Sign In
+        </a>
+      </li>
+
+      <li *ngIf="apiService.currentUser()" style="display: flex; align-items: center; gap: 16px;">
+        <span style="font-size: 14px; color: var(--text-secondary);">
+          Hello, <strong style="color: var(--text-primary);">{{ apiService.currentUser()?.first_name }}</strong>
+        </span>
+        <button (click)="onLogout()" class="btn-secondary" style="padding: 6px 12px; font-size: 13px; border-color: rgba(239, 68, 68, 0.2); color: #f87171;">
+          Sign Out
+        </button>
+      </li>
+    </ul>
+
+  </div>
+</nav>
+
+<!-- Main Viewport Router Outlet -->
+<main class="animate-fade-in" style="min-height: calc(100vh - 120px);">
+  <router-outlet></router-outlet>
+</main>
+
+<footer style="margin-top: 60px; padding: 40px 0; border-top: 1px solid var(--glass-border); text-align: center; color: var(--text-muted); font-size: 13px;">
+  <div class="container">
+    <p>© 2026 E-commerce MLOps Recommendation System Baseline Project</p>
+    <p style="margin-top: 4px;">Powered by Flask, PostgreSQL, and Angular Standalone</p>
+  </div>
+</footer>

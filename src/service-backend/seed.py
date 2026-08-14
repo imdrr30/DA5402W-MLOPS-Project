@@ -40,14 +40,18 @@ def seed(conn: psycopg2.extensions.connection) -> None:
                 "COPY categories (id, category_name) FROM STDIN WITH (FORMAT CSV, HEADER)", f
             )
 
-        print("Seeding products (1.4M rows, this may take a minute)...")
-        with open(os.path.join(SEED_DIR, "amazon_products.csv"), "r", encoding="utf-8") as f:
-            cur.copy_expert(
-                """COPY products (asin, title, img_url, product_url, stars, reviews,
-                   price, list_price, category_id, is_best_seller, bought_in_last_month)
-                   FROM STDIN WITH (FORMAT CSV, HEADER, NULL '')""",
-                f,
-            )
+        products_csv = os.path.join(SEED_DIR, "amazon_products.csv")
+        if not os.path.exists(products_csv):
+            print("WARNING: amazon_products.csv not found in /seed — skipping products seed.")
+        else:
+            print("Seeding products (1.4M rows, this may take a minute)...")
+            with open(products_csv, "r", encoding="utf-8") as f:
+                cur.copy_expert(
+                    """COPY products (asin, title, img_url, product_url, stars, reviews,
+                       price, list_price, category_id, is_best_seller, bought_in_last_month)
+                       FROM STDIN WITH (FORMAT CSV, HEADER, NULL '')""",
+                    f,
+                )
 
         print("Seeding users...")
         with open(os.path.join(SEED_DIR, "users.csv"), "r", encoding="utf-8") as f:

@@ -81,6 +81,19 @@ services:
       - spark-kafka-net
    
 
+  # --- Angular Frontend ---
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/angular/Dockerfile
+    container_name: frontend
+    depends_on:
+      - ecomm-backend
+    ports:
+      - "4200:4200"
+    networks:
+      - spark-kafka-net
+
   # --- EcomBackend ---
   ecomm-backend:
     build:
