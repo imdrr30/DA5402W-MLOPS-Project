@@ -1,0 +1,5 @@
+id,first_name,last_name,email,phone_number,region,country,hashed_password,is_deleted
+1,John,Doe,john.doe@example.com,+14155552671,North America,USA,$2b$12$abcdefghijklmnopqrstuv, false
+2,Jane,Smith,jane.smith@example.ca,+14165559876,North America,Canada,$2b$12$uvwxyzABCDEFGHIJKLMNO, false
+3,Ali,Khan,ali.khan@example.co.uk,+447911123456,Europe,UK,$2b$12$1234567890abcdefghijkl, true
+4,Mei,Chen,mei.chen@example.com,+8613800138000,Asia,China,$2b$12$ABCDEFGHIJKLMNOpqrstuv, false

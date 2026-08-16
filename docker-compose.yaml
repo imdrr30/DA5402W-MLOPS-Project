@@ -1,0 +1,278 @@
+version: '3.8'
+
+networks:
+  spark-kafka-net:
+    driver: bridge
+
+services:
+  # --- KAFKA BROKER ---
+  kafka:
+    image: apache/kafka:3.7.0
+    container_name: kafka
+    ports:
+      - "9094:9094"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093,EXTERNAL://0.0.0.0:9094
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://localhost:9094
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    networks:
+      - spark-kafka-net
+
+  # --- OFFICIAL APACHE SPARK CONTAINER ---
+  spark:
+    build:
+      context: .
+      dockerfile: docker/spark/Dockerfile
+    container_name: spark-master
+    user: root  # Prevents local permission issues with volume mounting
+    command: tail -f /dev/null
+    ports:
+      - "4040:4040"  # Spark UI port for local apps
+    volumes:
+      # Maps local directories to Spark's official default workspace directory
+      - ./src:/opt/project/src
+      - ./src/sparkScripts:/opt/spark/work-dir/scripts
+      - ./outputs/sparkOutput:/opt/spark/work-dir/output
+      - ./DB:/DB/
+      - ./lookupData:/lookupData
+    networks:
+      - spark-kafka-net
+
+  # --- MLFLOW TRACKING SERVER ---
+  # --- MLflow Metadata DB ---
+  mlflow-postgres:
+    image: postgres:13
+    container_name: mlflow-postgres
+    environment:
+      - POSTGRES_USER=mlflow
+      - POSTGRES_PASSWORD=mlflow
+      - POSTGRES_DB=mlflowdb
+    ports:
+      - "5434:5432"
+    networks:
+      - spark-kafka-net
+
+  # --- MLFLOW TRACKING SERVER ---
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:latest
+    container_name: mlflow
+    depends_on:
+      - mlflow-postgres
+    command: >-
+      bash -c "pip install psycopg2-binary -q &&
+      mlflow server
+      --host 0.0.0.0
+      --port 5000
+      --backend-store-uri postgresql://mlflow:mlflow@mlflow-postgres:5432/mlflowdb
+      --default-artifact-root /mlflow/artifacts"
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./outputs/mlruns:/mlflow/artifacts
+    networks:
+      - spark-kafka-net
+   
+
+  # --- Churn Notifier (cart abandonment → discount email simulation) ---
+  churn-notifier:
+    build:
+      context: .
+      dockerfile: docker/churn-notifier/Dockerfile
+    container_name: churn-notifier
+    depends_on:
+      - kafka
+      - ecomm-postgres
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - DB_HOST=ecomm-postgres
+      - DB_USER=ecomm
+      - DB_PASSWORD=ecomm
+      - DB_NAME=ecommdb
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+      - FEATURES_PATH=/features/user_value_features.csv
+      - ABANDONMENT_MINUTES=15
+      - CHECK_INTERVAL_SECONDS=60
+    volumes:
+      - ./DB:/features
+    networks:
+      - spark-kafka-net
+
+  # --- Angular Frontend ---
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/angular/Dockerfile
+    container_name: frontend
+    depends_on:
+      - ecomm-backend
+    ports:
+      - "4200:4200"
+    networks:
+      - spark-kafka-net
+
+  # --- Apriori Recommendation API ---
+  apriori-api:
+    build:
+      context: .
+      dockerfile: docker/apriori-api/Dockerfile
+    container_name: apriori-api
+    depends_on:
+      - mlflow
+    environment:
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+    ports:
+      - "5002:5002"
+    networks:
+      - spark-kafka-net
+
+  # --- EcomBackend ---
+  ecomm-backend:
+    build:
+      context: .
+      dockerfile: ./docker/flask-backend/Dockerfile
+    container_name: ecomm-backend
+    depends_on:
+      - ecomm-postgres
+      - kafka
+    environment:
+      - DB_HOST=ecomm-postgres
+      - DB_USER=ecomm
+      - DB_PASSWORD=ecomm
+      - DB_NAME=ecommdb
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - AIRFLOW_URL=http://airflow-webserver:8080
+      - AIRFLOW_USER=admin
+      - AIRFLOW_PASSWORD=admin
+      - SEED_DIR=/seed
+      - APRIORI_API_URL=http://apriori-api:5002
+    volumes:
+      - ./DB/seed:/seed
+    ports:
+      - "5001:5001"
+    networks:
+      - spark-kafka-net
+
+  # --- pgweb (EcommDB browser for testing) ---
+  pgweb:
+    image: sosedoff/pgweb
+    container_name: pgweb
+    depends_on:
+      ecomm-backend:
+        condition: service_started
+    environment:
+      - DATABASE_URL=postgres://ecomm:ecomm@ecomm-postgres:5432/ecommdb?sslmode=disable
+    ports:
+      - "8081:8081"
+    networks:
+      - spark-kafka-net
+
+  # --- EcommDB ---
+  ecomm-postgres:
+    image: postgres:13
+    container_name: ecomm-postgres
+    environment:
+      - POSTGRES_USER=ecomm
+      - POSTGRES_PASSWORD=ecomm
+      - POSTGRES_DB=ecommdb
+    ports:
+      - "5433:5432"
+    volumes:
+      - ./DB/init:/docker-entrypoint-initdb.d
+      - ./DB/seed:/seed
+    networks:
+      - spark-kafka-net
+
+  # --- Airflow Metadata DB ---
+  postgres:
+    image: postgres:13
+    container_name: airflow-postgres
+    environment:
+      - POSTGRES_USER=airflow
+      - POSTGRES_PASSWORD=airflow
+      - POSTGRES_DB=airflow
+    ports:
+      - "5432:5432"
+
+  # --- Airflow Init (DB + Admin User) ---
+  airflow-init:
+    build:
+        context: .                # project root as build context
+        dockerfile: docker/airflow/Dockerfile
+    container_name: airflow-init
+    depends_on:
+        - postgres
+    environment:
+        - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+        - AIRFLOW__CORE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres:5432/airflow
+        - AIRFLOW__CORE__LOAD_EXAMPLES=False
+        - AIRFLOW__WEBSERVER__SECRET_KEY=mysecretkey123
+    volumes:
+        - ./src/airflowScripts/dags:/opt/airflow/dags
+        - ./src/pythonScripts:/opt/airflow/src/pythonScripts
+        - ./sample:/opt/airflow/sample
+        - ./DB:/opt/airflow/DB
+        - ./outputs:/opt/airflow/outputs
+        - ./logs:/opt/airflow/logs
+        - ./plugins:/opt/airflow/plugins
+    command: bash -c "airflow db init && airflow users create --username admin --firstname Admin --lastname User --role Admin --email admin@example.com --password admin"
+
+  # --- Airflow Webserver ---
+  airflow-webserver:
+    build:
+        context: .                # project root as build context
+        dockerfile: docker/airflow/Dockerfile
+    container_name: airflow-webserver
+    depends_on:
+        airflow-init:
+          condition: service_completed_successfully
+        postgres:
+          condition: service_started
+    environment:
+        - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+        - AIRFLOW__CORE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres:5432/airflow
+        - AIRFLOW__CORE__LOAD_EXAMPLES=False
+        - AIRFLOW__WEBSERVER__SECRET_KEY=mysecretkey123
+    volumes:
+        - ./src/airflowScripts/dags:/opt/airflow/dags
+        - ./src/pythonScripts:/opt/airflow/src/pythonScripts
+        - ./sample:/opt/airflow/sample
+        - ./DB:/opt/airflow/DB
+        - ./outputs:/opt/airflow/outputs
+        - ./logs:/opt/airflow/logs
+        - ./plugins:/opt/airflow/plugins
+
+    ports:
+      - "8080:8080"
+    command: webserver
+
+  # --- Airflow Scheduler ---
+  airflow-scheduler:
+    build:
+        context: .                # project root as build context
+        dockerfile: docker/airflow/Dockerfile
+    container_name: airflow-scheduler
+    depends_on:
+        airflow-init:
+          condition: service_completed_successfully
+        postgres:
+          condition: service_started
+    environment:
+        - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+        - AIRFLOW__CORE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres:5432/airflow
+        - AIRFLOW__CORE__LOAD_EXAMPLES=False
+        - AIRFLOW__WEBSERVER__SECRET_KEY=mysecretkey123
+    volumes:
+        - ./src/airflowScripts/dags:/opt/airflow/dags
+        - ./src/pythonScripts:/opt/airflow/src/pythonScripts
+        - ./sample:/opt/airflow/sample
+        - ./DB:/opt/airflow/DB
+        - ./outputs:/opt/airflow/outputs
+        - ./logs:/opt/airflow/logs
+        - ./plugins:/opt/airflow/plugins
+
+    command: scheduler

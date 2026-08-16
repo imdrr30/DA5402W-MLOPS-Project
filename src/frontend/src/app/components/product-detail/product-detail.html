@@ -1,0 +1,129 @@
+<div class="container animate-fade-in" style="margin-top: 30px; margin-bottom: 60px;">
+  
+  <!-- Back Button -->
+  <a routerLink="/" class="btn-secondary" style="margin-bottom: 30px; padding: 8px 16px; font-size: 14px; text-decoration: none;">
+    ← Back to Products
+  </a>
+
+  <!-- Loading State -->
+  <div *ngIf="loading()" style="display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 400px;">
+    <div style="border: 4px solid var(--glass-border); border-top-color: var(--accent-primary); border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin-bottom: 16px;"></div>
+    <p style="color: var(--text-secondary);">Loading product details...</p>
+  </div>
+
+  <!-- Product Details Block -->
+  <div *ngIf="!loading() && product()" class="glass-panel" style="padding: 40px; border-radius: var(--border-radius-lg); display: grid; grid-template-columns: 1fr 1.2fr; gap: 50px; margin-bottom: 50px;">
+    
+    <!-- Left Column: Image -->
+    <div style="display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.02); border-radius: var(--border-radius-md); padding: 30px; border: 1px solid var(--glass-border); height: 450px; overflow: hidden;">
+      <img [src]="product().img_url" [alt]="product().title" style="max-height: 100%; max-width: 100%; object-fit: contain;">
+    </div>
+
+    <!-- Right Column: Information -->
+    <div style="display: flex; flex-direction: column;">
+      
+      <!-- Category Badge -->
+      <div style="margin-bottom: 12px;">
+        <span class="badge" style="background: rgba(139, 92, 246, 0.15); color: var(--accent-primary); border: 1px solid rgba(139, 92, 246, 0.3);">
+          {{ product().category_name }}
+        </span>
+        <span *ngIf="product().is_best_seller" class="badge badge-bestseller" style="margin-left: 8px;">
+          Best Seller
+        </span>
+      </div>
+
+      <!-- Title -->
+      <h1 style="font-size: 26px; font-weight: 800; line-height: 1.3; color: var(--text-primary); margin-bottom: 16px;">
+        {{ product().title }}
+      </h1>
+
+      <!-- ASIN & Stats -->
+      <div style="display: flex; align-items: center; gap: 20px; color: var(--text-secondary); font-size: 14px; margin-bottom: 24px; border-bottom: 1px solid var(--glass-border); padding-bottom: 16px;">
+        <span>ASIN: <strong style="color: var(--text-primary);">{{ product().asin }}</strong></span>
+        <div class="star-rating" style="font-size: 15px;">
+          ★ {{ product().stars }} 
+          <span style="color: var(--text-muted); font-size: 14px; margin-left: 4px;">({{ product().reviews }} ratings)</span>
+        </div>
+      </div>
+
+      <!-- Price Block -->
+      <div style="display: flex; align-items: baseline; gap: 16px; margin-bottom: 30px;">
+        <span style="font-size: 32px; font-weight: 800; color: var(--accent-secondary); font-family: monospace;">
+          ${{ product().price }}
+        </span>
+        <span *ngIf="product().list_price > product().price" style="font-size: 18px; color: var(--text-muted); text-decoration: line-through; font-family: monospace;">
+          ${{ product().list_price }}
+        </span>
+      </div>
+
+      <!-- Purchase-Intent Actions (Quantity Selector & Cart Button) -->
+      <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--glass-border); padding: 24px; border-radius: var(--border-radius-md); margin-top: auto;">
+        <p style="color: var(--text-secondary); font-size: 14px; margin-bottom: 12px; font-weight: 500;">
+          Select Purchase Quantity:
+        </p>
+        <div style="display: flex; align-items: center; gap: 24px; margin-bottom: 20px;">
+          
+          <!-- Quantity Control -->
+          <div style="display: inline-flex; align-items: center; border: 1px solid var(--glass-border); border-radius: var(--border-radius-sm); overflow: hidden; background: var(--bg-primary);">
+            <button type="button" (click)="decrementQty()" style="background: none; border: none; color: var(--text-primary); font-size: 18px; font-weight: bold; width: 44px; height: 40px; cursor: pointer; transition: var(--transition-smooth); border-right: 1px solid var(--glass-border);" onmouseover="this.style.background='rgba(255,255,255,0.05)'" onmouseout="this.style.background='none'">
+              −
+            </button>
+            <span style="font-size: 16px; font-weight: 700; width: 50px; text-align: center; color: var(--text-primary);">
+              {{ quantity() }}
+            </span>
+            <button type="button" (click)="incrementQty()" style="background: none; border: none; color: var(--text-primary); font-size: 18px; font-weight: bold; width: 44px; height: 40px; cursor: pointer; transition: var(--transition-smooth); border-left: 1px solid var(--glass-border);" onmouseover="this.style.background='rgba(255,255,255,0.05)'" onmouseout="this.style.background='none'">
+              +
+            </button>
+          </div>
+
+          <!-- Total price preview -->
+          <span style="color: var(--text-secondary); font-size: 15px;">
+            Subtotal: <strong style="color: var(--text-primary); font-family: monospace;">${{ (product().price * quantity()).toFixed(2) }}</strong>
+          </span>
+        </div>
+
+        <button (click)="addToCart()" class="btn-primary" style="width: 100%; justify-content: center; height: 48px; font-size: 16px;">
+          Add to Shopping Cart
+        </button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Related Recommendations -->
+  <section *ngIf="recommendations().length > 0">
+    <h2 style="font-size: 22px; font-weight: 700; margin-bottom: 24px; border-bottom: 1px solid var(--glass-border); padding-bottom: 8px;">
+      Customers Also Viewed
+    </h2>
+
+    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 20px;">
+      <div *ngFor="let prod of recommendations()" class="glass-card" [routerLink]="['/product', prod.id]" [queryParams]="{is_recommended: true}" style="cursor: pointer; padding: 16px; display: flex; flex-direction: column; height: 320px;">
+        
+        <div style="height: 140px; display: flex; align-items: center; justify-content: center; margin-bottom: 12px; background: rgba(255,255,255,0.02); border-radius: var(--border-radius-sm); overflow: hidden;">
+          <img [src]="prod.img_url" [alt]="prod.title" style="max-height: 100%; max-width: 100%; object-fit: contain;">
+        </div>
+        
+        <h3 style="font-size: 14px; font-weight: 600; line-height: 1.4; color: var(--text-primary); margin-bottom: 8px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; height: 38px;">
+          {{ prod.title }}
+        </h3>
+        
+        <div style="margin-top: auto;">
+          <div class="star-rating" style="font-size: 12px; margin-bottom: 4px;">
+            ★ {{ prod.stars }}
+          </div>
+          
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 8px;">
+            <span style="font-size: 16px; font-weight: 700; color: var(--accent-secondary); font-family: monospace;">
+              ${{ prod.price }}
+            </span>
+            <button class="btn-primary" style="padding: 6px 12px; font-size: 12px; border-radius: 4px;">
+              View
+            </button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+</div>
