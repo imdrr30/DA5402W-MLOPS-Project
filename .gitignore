@@ -44,7 +44,7 @@ Thumbs.db
 Desktop.ini
 
 # data paths, DB
-DB/
+DB/seed/amazon_products.csv
 
 # Spark
 spark-warehouse/
@@ -64,3 +64,7 @@ data/inference/
 # models
 models/
 
+
+ecomm_data/
+mlflow_data/
+postgres_data/

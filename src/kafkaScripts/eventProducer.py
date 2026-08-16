@@ -180,9 +180,18 @@ def generate_events_chunk(chunk_size: int, start_id: int, n_users: int, n_produc
     is_recommended = rng.random(chunk_size) < IS_RECOMMENDED_RATE
     recommendation_view = np.where(is_recommended, rng.choice(RECOMMENDATION_VIEWS, size=chunk_size), "")
 
+    # session_id: one session per user per day, format matches sample/events.csv
+    dates = timestamps.strftime("%Y-%m-%d")
+    session_ids = np.where(
+        np.array(user_ids, dtype=str) != "",
+        np.array([f"u{uid}-{d}-s0" for uid, d in zip(user_ids, dates)]),
+        np.array([f"v{vid}-{d}-s0" for vid, d in zip(visitor_ids, dates)]),
+    )
+
     df = pd.DataFrame({
-        "id": ids, "topic": topics, "visitor_id": visitor_ids, "user_id": user_ids, 
-        "timestamp": timestamps.strftime("%Y-%m-%dT%H:%M:%S"), "event_type": event_type, 
+        "id": ids, "topic": topics, "session_id": session_ids,
+        "visitor_id": visitor_ids, "user_id": user_ids,
+        "timestamp": timestamps.strftime("%Y-%m-%dT%H:%M:%S"), "event_type": event_type,
         "product_id": product_ids, "order_id_for_refund": order_ids,
         "is_recommended": is_recommended, "recommendation_view": recommendation_view,
     })

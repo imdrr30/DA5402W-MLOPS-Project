@@ -22,9 +22,13 @@ from sklearn.model_selection import train_test_split
 
 try:
     import mlflow
+    import mlflow.pyfunc
 except ImportError as exc:  # pragma: no cover - runtime dependency guard
     raise SystemExit("mlflow is not installed. Install it with: pip install mlflow") from exc
-    
+
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from mlflow_registry import promote_if_best
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -42,17 +46,24 @@ def run_apriori_and_save(
     rules_output_csv: str = "apriori_rules.csv",
     model_pickle_file: str = "apriori_model.pkl",
     test_size: float = 0.3,
-    random_state: int = 42
+    random_state: int = 42,
+    mlflow_tracking_uri: str = None,
 ):
     """
     Applies Apriori algorithm to extracted_features.csv, exports rules to CSV,
-    and saves the model object into a pickle (.pkl) file.
+    saves the model pickle, tracks metrics in MLflow, and promotes to registry
+    if avg_lift beats the current @champion.
     """
     repo_root = resolve_repo_root(Path(__file__))
     if features_csv is None:
         features_csv = repo_root / "DB" / "extracted_features.csv"
     if model_pickle_file is None:
         model_pickle_file = repo_root / "artifacts" / "apriori_model.pkl"
+
+    if mlflow_tracking_uri is None:
+        mlflow_tracking_uri = os.environ.get("MLFLOW_TRACKING_URI", "http://mlflow:5000")
+    mlflow.set_tracking_uri(mlflow_tracking_uri)
+    mlflow.set_experiment("apriori_recommendation")
     if rules_output_csv is None:
         rules_output_csv = repo_root / "artifacts" / "apriori_rules.csv"
     if not os.path.exists(features_csv):
@@ -148,11 +159,54 @@ def run_apriori_and_save(
         
         with open(model_pickle_file, 'wb') as f:
             pickle.dump(model_payload, f)
-            
+
         print(f"Model serialized & saved as pickle file: '{model_pickle_file}'")
-        
         print("=== Top 10 Association Rules by Lift ===")
         print(rules_export[['antecedents', 'consequents', 'support', 'confidence', 'lift']].head(10))
+
+        # MLflow tracking + registry promotion
+        avg_lift = float(rules['lift'].mean())
+        avg_confidence = float(rules['confidence'].mean())
+        avg_support = float(rules['support'].mean())
+
+        with mlflow.start_run(run_name="apriori_training") as run:
+            mlflow.log_params({
+                "min_support": min_support,
+                "min_confidence": min_confidence,
+                "test_size": test_size,
+                "random_state": random_state,
+            })
+            mlflow.log_metrics({
+                "frequent_itemsets_count": len(frequent_itemsets),
+                "association_rules_count": len(rules),
+                "avg_lift": avg_lift,
+                "avg_confidence": avg_confidence,
+                "avg_support": avg_support,
+                "train_transactions": len(train_transactions),
+                "test_transactions": len(test_transactions),
+            })
+            mlflow.log_artifact(str(model_pickle_file), artifact_path="model")
+            mlflow.log_artifact(str(rules_output_csv), artifact_path="model")
+
+            # Register pyfunc model from predict script and promote if best avg_lift
+            try:
+                from apriori_mlflow_predict import AprioriRecommender
+                mlflow.pyfunc.log_model(
+                    artifact_path="sklearn_model",
+                    python_model=AprioriRecommender(),
+                    artifacts={"apriori_model": str(model_pickle_file)},
+                    registered_model_name="AprioriRecommender",
+                )
+                promote_if_best(
+                    model_name="AprioriRecommender",
+                    new_run_id=run.info.run_id,
+                    metric_name="avg_lift",
+                    higher_is_better=True,
+                )
+            except Exception as e:
+                print(f"WARNING: Model registry promotion failed: {e}")
+
+            print(f"MLflow run: {run.info.run_id} | avg_lift={avg_lift:.4f}")
     else:
         print("No association rules met the minimum confidence threshold.")
 

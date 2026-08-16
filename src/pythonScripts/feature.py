@@ -38,7 +38,11 @@ def extract_transaction_features(csv_file_path: str = "events.csv", output_csv_p
 
     print(f"Reading event logs from: {csv_file_path}")
     df = pd.read_csv(csv_file_path)
-    
+
+    # Derive session_id from user+date when not present (DB-sourced or Flask-emitted events won't have it)
+    if 'session_id' not in df.columns:
+        df['session_id'] = df['user_id'].astype(str) + '_' + pd.to_datetime(df['timestamp']).dt.date.astype(str)
+
     # 1. Clean & Preprocess Customer ID
     # Extract user_id from session_id if missing (e.g., 'u1204-2026-07-10-s0' -> '1204')
     if 'user_id' not in df.columns or df['user_id'].isna().any():
