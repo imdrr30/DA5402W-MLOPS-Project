@@ -35,7 +35,7 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE TABLE IF NOT EXISTS events (
     id                  BIGSERIAL PRIMARY KEY,
     visitor_id          TEXT,
-    user_id             TEXT,
+    user_id             INTEGER,
     timestamp           TIMESTAMPTZ,
     event_type          TEXT,
     product_id          INTEGER,

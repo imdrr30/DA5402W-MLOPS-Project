@@ -129,7 +129,7 @@ class Event(db.Model):
     __tablename__ = "events"
     id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
     visitor_id = db.Column(db.String(100), nullable=True)
-    user_id = db.Column(db.String(100), nullable=True)
+    user_id = db.Column(db.Integer, nullable=True)
     timestamp = db.Column(db.DateTime, default=func.now())
     event_type = db.Column(db.String(50))
     product_id = db.Column(db.Integer, nullable=True)
