@@ -7,9 +7,9 @@ from analytics import Analytics
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--run-date", required=True, help="YYYY-MM-DD, e.g. Airflow's {{ ds }}")
-    parser.add_argument("--user-events-path", default="/DB/consumed_events")
-    parser.add_argument("--recommendations-path", default="/DB/recommendation_events")
-    parser.add_argument("--notifications-path", default="/DB/notification_events")
+    parser.add_argument("--user-events-path", default="/DB/topic_dumps/user_events")
+    parser.add_argument("--recommendations-path", default="/DB/topic_dumps/recommendation_events")
+    parser.add_argument("--notifications-path", default="/DB/topic_dumps/notification_events")
     parser.add_argument("--output-path", default="/DB/analytics")
     parser.add_argument("--app-name", default="DailyAnalytics")
     return parser.parse_args()

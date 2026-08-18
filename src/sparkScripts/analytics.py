@@ -4,8 +4,12 @@ from pyspark.sql import functions as F
 
 class Analytics:
 
-    def __init__(self, spark: SparkSession, user_events_path: str,
-                 recommendations_path: str, notifications_path: str):
+    def __init__(self, 
+        spark: SparkSession, 
+        user_events_path: str,
+        recommendations_path: str, 
+        notifications_path: str
+    ):
         self.spark = spark
         self.user_events = spark.read.parquet(user_events_path)
         self.recommendations = spark.read.parquet(recommendations_path)
@@ -181,14 +185,6 @@ class Analytics:
     # ---------------------------------------------------------
 
     def generate_report(self, run_date: str, output_path: str):
-        """
-        Computes every metric and writes two kinds of output under output_path:
-        - a single-row summary (scalar metrics) per run_date
-        - one small table per ranking metric, tagged with run_date
-
-        Overwrite mode per run_date partition makes reruns idempotent --
-        rerunning the same date replaces that date's output instead of duplicating it.
-        """
         summary = {
             "run_date": run_date,
             "total_registered_customers": self.total_registered_customers(),

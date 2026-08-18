@@ -31,10 +31,10 @@ logs/
 # runtime data
 tmp/
 output/
-outputs/
+outputs/*
 
 # spark checkpoints
-checkpoints/
+checkpoints/*
 chk/
 
 # windows files
@@ -45,6 +45,7 @@ Desktop.ini
 
 # data paths, DB
 DB/seed/amazon_products.csv
+DB/*
 
 # Spark
 spark-warehouse/

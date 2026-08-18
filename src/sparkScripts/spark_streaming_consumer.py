@@ -1,6 +1,4 @@
-# docker exec -it spark-master /opt/spark/bin/spark-submit --master "local[*]" --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.1 /opt/spark/work-dir/scripts/spark_streaming_consumer.py   --mode stream --brokers kafka:9092 --raw-events-path /DB/consumed_events --products-path /lookupData/products.csv
-
-
+# sparkScripts/spark_streaming_consumer.py
 
 import argparse
 
@@ -93,7 +91,7 @@ def parse_args():
                               "is enriched with the product's category/price via a broadcast "
                               "join -- useful item-level context for feature engineering "
                               "beyond just product_id.")
-    parser.add_argument("--checkpoint-dir", type=str, default="/chk")
+    parser.add_argument("--checkpoint-dir", type=str, default="/checkpoints")
     parser.add_argument("--enable-activity-agg", action="store_true",
                          help="Also write a windowed per-customer aggregate stream "
                               "(dashboards/monitoring). Off by default -- for a feature "
@@ -314,12 +312,11 @@ def validate_notification_events(df):
 
 
 def start_topic_dump_sink(df, path: str, checkpoint_dir: str, topic_name: str, trigger_interval: str):
-    """Append-mode raw dump of a validated topic df to CSV, for eyeballing the data."""
     query = (
         df.writeStream
-        .format("csv")
+        .format("parquet")
         .option("path", f"{path}/{topic_name}")
-        .option("header", True)
+        # .option("header", True)
         .option("checkpointLocation", f"{checkpoint_dir}/dump_{topic_name}")
         .outputMode("append")
         .trigger(processingTime=trigger_interval)
@@ -359,7 +356,10 @@ def run_stream_job(spark, args):
         start_topic_dump_sink(user_df, args.dump_path, args.checkpoint_dir, "user_events", args.trigger_interval)
         start_topic_dump_sink(rec_df, args.dump_path, args.checkpoint_dir, "recommendation_events", args.trigger_interval)
         start_topic_dump_sink(notif_df, args.dump_path, args.checkpoint_dir, "notification_events", args.trigger_interval)
-        print(f"[INFO] Raw per-topic CSV dumps writing to: {args.dump_path}/{{user_events,recommendation_events,notification_events}}")
+        print(
+            f"[INFO] Raw per-topic Parquet dumps writing to: "
+            f"{args.dump_path}/{{user_events,recommendation_events,notification_events}}"
+        )
 
     if args.enable_console_metrics:
         start_user_event_metrics(
