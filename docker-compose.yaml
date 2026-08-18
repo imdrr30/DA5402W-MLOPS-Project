@@ -10,12 +10,12 @@ services:
     image: apache/kafka:3.7.0
     container_name: kafka
     ports:
-      - "9094:9094"
+      - "10201:9094"
     environment:
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: broker,controller
       KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093,EXTERNAL://0.0.0.0:9094
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://localhost:9094
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://localhost:10201
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
       KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
@@ -32,7 +32,7 @@ services:
     user: root  # Prevents local permission issues with volume mounting
     command: tail -f /dev/null
     ports:
-      - "4040:4040"  # Spark UI port for local apps
+      - "10202:4040"  # Spark UI port for local apps
     volumes:
       # Maps local directories to Spark's official default workspace directory
       - ./src:/opt/project/src
@@ -53,7 +53,7 @@ services:
       - POSTGRES_PASSWORD=mlflow
       - POSTGRES_DB=mlflowdb
     ports:
-      - "5434:5432"
+      - "10203:5432"
     networks:
       - spark-kafka-net
 
@@ -71,7 +71,7 @@ services:
       --backend-store-uri postgresql://mlflow:mlflow@mlflow-postgres:5432/mlflowdb
       --default-artifact-root /mlflow/artifacts"
     ports:
-      - "5000:5000"
+      - "10204:5000"
     volumes:
       - ./outputs/mlruns:/mlflow/artifacts
     networks:
@@ -111,7 +111,7 @@ services:
     depends_on:
       - ecomm-backend
     ports:
-      - "4200:4200"
+      - "10205:4200"
     networks:
       - spark-kafka-net
 
@@ -126,7 +126,7 @@ services:
     environment:
       - MLFLOW_TRACKING_URI=http://mlflow:5000
     ports:
-      - "5002:5002"
+      - "10206:5002"
     networks:
       - spark-kafka-net
 
@@ -153,7 +153,7 @@ services:
     volumes:
       - ./DB/seed:/seed
     ports:
-      - "5001:5001"
+      - "10207:5001"
     networks:
       - spark-kafka-net
 
@@ -167,7 +167,7 @@ services:
     environment:
       - DATABASE_URL=postgres://ecomm:ecomm@ecomm-postgres:5432/ecommdb?sslmode=disable
     ports:
-      - "8081:8081"
+      - "10208:8081"
     networks:
       - spark-kafka-net
 
@@ -180,7 +180,7 @@ services:
       - POSTGRES_PASSWORD=ecomm
       - POSTGRES_DB=ecommdb
     ports:
-      - "5433:5432"
+      - "10209:5432"
     volumes:
       - ./DB/init:/docker-entrypoint-initdb.d
       - ./DB/seed:/seed
@@ -196,7 +196,9 @@ services:
       - POSTGRES_PASSWORD=airflow
       - POSTGRES_DB=airflow
     ports:
-      - "5432:5432"
+      - "10210:5432"
+    networks:
+      - spark-kafka-net
 
   # --- Airflow Init (DB + Admin User) ---
   airflow-init:
@@ -211,15 +213,19 @@ services:
         - AIRFLOW__CORE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres:5432/airflow
         - AIRFLOW__CORE__LOAD_EXAMPLES=False
         - AIRFLOW__WEBSERVER__SECRET_KEY=mysecretkey123
+        - MLFLOW_TRACKING_URI=http://mlflow:5000
     volumes:
         - ./src/airflowScripts/dags:/opt/airflow/dags
         - ./src/pythonScripts:/opt/airflow/src/pythonScripts
+        - ./src/sparkScripts:/opt/airflow/src/sparkScripts
         - ./sample:/opt/airflow/sample
         - ./DB:/opt/airflow/DB
         - ./outputs:/opt/airflow/outputs
         - ./logs:/opt/airflow/logs
         - ./plugins:/opt/airflow/plugins
     command: bash -c "airflow db init && airflow users create --username admin --firstname Admin --lastname User --role Admin --email admin@example.com --password admin"
+    networks:
+      - spark-kafka-net
 
   # --- Airflow Webserver ---
   airflow-webserver:
@@ -237,9 +243,11 @@ services:
         - AIRFLOW__CORE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres:5432/airflow
         - AIRFLOW__CORE__LOAD_EXAMPLES=False
         - AIRFLOW__WEBSERVER__SECRET_KEY=mysecretkey123
+        - MLFLOW_TRACKING_URI=http://mlflow:5000
     volumes:
         - ./src/airflowScripts/dags:/opt/airflow/dags
         - ./src/pythonScripts:/opt/airflow/src/pythonScripts
+        - ./src/sparkScripts:/opt/airflow/src/sparkScripts
         - ./sample:/opt/airflow/sample
         - ./DB:/opt/airflow/DB
         - ./outputs:/opt/airflow/outputs
@@ -247,7 +255,9 @@ services:
         - ./plugins:/opt/airflow/plugins
 
     ports:
-      - "8080:8080"
+      - "10211:8080"
+    networks:
+      - spark-kafka-net
     command: webserver
 
   # --- Airflow Scheduler ---
@@ -266,13 +276,67 @@ services:
         - AIRFLOW__CORE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres:5432/airflow
         - AIRFLOW__CORE__LOAD_EXAMPLES=False
         - AIRFLOW__WEBSERVER__SECRET_KEY=mysecretkey123
+        - MLFLOW_TRACKING_URI=http://mlflow:5000
     volumes:
         - ./src/airflowScripts/dags:/opt/airflow/dags
         - ./src/pythonScripts:/opt/airflow/src/pythonScripts
+        - ./src/sparkScripts:/opt/airflow/src/sparkScripts
         - ./sample:/opt/airflow/sample
         - ./DB:/opt/airflow/DB
         - ./outputs:/opt/airflow/outputs
         - ./logs:/opt/airflow/logs
         - ./plugins:/opt/airflow/plugins
-
+    networks:
+      - spark-kafka-net
     command: scheduler
+
+  # --- Kafka Topic Initializer (one-shot) ---
+  topic-init:
+    build:
+      context: .
+      dockerfile: docker/kafka-init/Dockerfile
+    container_name: topic-init
+    depends_on:
+      - kafka
+    environment:
+      - KAFKA_BROKER=kafka:9092
+    networks:
+      - spark-kafka-net
+
+  # --- Kafka Event Producer (synthetic user events, runs forever) ---
+  event-producer:
+    build:
+      context: .
+      dockerfile: docker/kafka-producer/Dockerfile
+    container_name: event-producer
+    depends_on:
+      topic-init:
+        condition: service_completed_successfully
+    environment:
+      - KAFKA_BROKER=kafka:9092
+    volumes:
+      - ./outputs/kafkaOutput:/outputs
+    networks:
+      - spark-kafka-net
+
+  # --- Spark Streaming Consumer (Kafka → EventsDB parquet) ---
+  spark-consumer:
+    build:
+      context: .
+      dockerfile: docker/spark/DockerFile
+    container_name: spark-consumer
+    user: root
+    depends_on:
+      topic-init:
+        condition: service_completed_successfully
+      kafka:
+        condition: service_started
+    environment:
+      - PYSPARK_PYTHON=python3
+    command: bash -c "/opt/spark/bin/spark-submit --master local[2] --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.1 /opt/project/src/sparkScripts/spark_streaming_consumer.py --brokers kafka:9092 --topics user-events,recommendation-actions,notification-events --raw-events-path /DB/topic_dumps --checkpoint-dir /opt/spark/work-dir/checkpoints"
+    volumes:
+      - ./src:/opt/project/src
+      - ./DB:/DB
+      - ./lookupData:/lookupData
+    networks:
+      - spark-kafka-net

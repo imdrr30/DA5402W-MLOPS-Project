@@ -134,4 +134,9 @@ def compute_user_features(events_path: str = None, output_path: str = None) -> p
 
 
 if __name__ == "__main__":
-    compute_user_features()
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--events-path", default=None)
+    parser.add_argument("--output-path", default=None)
+    args = parser.parse_args()
+    compute_user_features(events_path=args.events_path, output_path=args.output_path)

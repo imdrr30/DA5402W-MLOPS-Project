@@ -11,6 +11,7 @@ RUN pip install --no-cache-dir \
     mlxtend \
     mlflow \
     pyarrow \
+    pyspark==3.5.1 \
     "kafka-python==2.2.15" \
     "pyOpenSSL>=24.0.0" \
     "cryptography>=42.0.0" \
