@@ -54,12 +54,7 @@ with DAG(
         bash_command="/usr/local/bin/python /opt/airflow/src/pythonScripts/model_apriori/train_model_apriori.py",
     )
 
-    publish_recommendation = BashOperator(
-        task_id="publish_recommendation",
-        bash_command="python /opt/airflow/src/pythonScripts/model_apriori/apriori_mlflow_predict.py",
-    )
-
-    feature_task >> train_apriori >> publish_recommendation
+    feature_task >> train_apriori
     spark_etl >> dvc_push
     spark_etl >> feature_task
 

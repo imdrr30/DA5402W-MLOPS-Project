@@ -15,4 +15,4 @@ CMD ["python", "launch_producer.py", \
      "--batch-size", "500", \
      "--interval-seconds", "5", \
      "--run-forever", \
-     "--out-dir", "/outputs"]
+     "--out-dir", "/opt/airflow/outputs"]

@@ -24,9 +24,9 @@ with DAG(
             "cd /opt/airflow/src/sparkScripts && "
             "python run_daily_analytics.py "
             "--run-date {{ ds }} "
-            "--user-events-path /opt/airflow/DB/topic_dumps/user_events "
-            "--recommendations-path /opt/airflow/DB/topic_dumps/recommendation_events "
-            "--notifications-path /opt/airflow/DB/topic_dumps/notification_events "
-            "--output-path /opt/airflow/DB/analytics"
+            "--user-events-path /DB/topic_dumps/user_events "
+            "--recommendations-path /DB/topic_dumps/recommendation_events "
+            "--notifications-path /DB/topic_dumps/notification_events "
+            "--output-path /DB/analytics"
         ),
     )
