@@ -73,7 +73,7 @@ docker compose -f docker-compose.yaml logs -f spark-consumer
 (Wait for some time, Check if all the containers are running)
 docker compose -f docker-compose.yaml ps
 
-8. Fireup airflow webserver and verify UI at localhost:10211 and check logs
+8. Fireup airflow webserver and verify UI at localhost:8080 and check logs
 docker compose -f docker-compose.yaml up -d airflow-webserver airflow-scheduler
 docker compose -f docker-compose.yaml logs airflow-scheduler
 
@@ -81,15 +81,15 @@ docker compose -f docker-compose.yaml logs airflow-scheduler
 docker compose -f docker-compose.yaml up -d ecomm-postgres ecomm-backend frontend apriori-api churn-notifier
 
 # Access points:
-#   Angular UI:        http://localhost:10205
-#   Flask backend:     http://localhost:10207/api/health
-#   MLflow UI:         http://localhost:10204
-#   Airflow UI:        http://localhost:10211  (admin/admin)
-#   Apriori API:       http://localhost:10206/health
-#   pgweb (DB UI):     http://localhost:10208
-#   Kafka external:    localhost:10201
+#   Angular UI:        http://localhost:4200
+#   Flask backend:     http://localhost:5001/api/health
+#   MLflow UI:         http://localhost:5000
+#   Airflow UI:        http://localhost:8080  (admin/admin)
+#   Apriori API:       http://localhost:5002/health
+#   pgweb (DB UI):     http://localhost:8081
+#   Kafka external:    localhost:9094
 
 10. (Optional) Run the producer from host machine:
-python ./src/kafkaScripts/launch_producer.py --n-users 1000 --n-products 200 --batch-size 500 --interval-seconds 5 --kafka-broker localhost:10201 --out-dir ./outputs/kafkaOutput --seed 42 --run-forever
+python ./src/kafkaScripts/launch_producer.py --n-users 1000 --n-products 200 --batch-size 500 --interval-seconds 5 --kafka-broker localhost:9094 --out-dir ./outputs/kafkaOutput --seed 42 --run-forever
 
 ------------------

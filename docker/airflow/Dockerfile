@@ -1,5 +1,16 @@
 FROM apache/airflow:2.7.1-python3.10
 
+USER root
+
+# PySpark needs a JVM and `ps` (used by load-spark-env.sh)
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends procps openjdk-11-jre-headless && \
+    rm -rf /var/lib/apt/lists/* && \
+    ln -s "$(dirname "$(dirname "$(readlink -f "$(command -v java)")")")" /usr/lib/jvm/default-java
+
+ENV JAVA_HOME=/usr/lib/jvm/default-java
+ENV PATH="${JAVA_HOME}/bin:${PATH}"
+
 USER airflow
 
 

@@ -10,12 +10,12 @@ services:
     image: apache/kafka:3.7.0
     container_name: kafka
     ports:
-      - "10201:9094"
+      - "9094:9094"
     environment:
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: broker,controller
       KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093,EXTERNAL://0.0.0.0:9094
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://localhost:10201
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://localhost:9094
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
       KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
@@ -32,7 +32,7 @@ services:
     user: root  # Prevents local permission issues with volume mounting
     command: tail -f /dev/null
     ports:
-      - "10202:4040"  # Spark UI port for local apps
+      - "4040:4040"  # Spark UI port for local apps
     volumes:
       # Maps local directories to Spark's official default workspace directory
       - ./src:/opt/project/src
@@ -53,7 +53,7 @@ services:
       - POSTGRES_PASSWORD=mlflow
       - POSTGRES_DB=mlflowdb
     ports:
-      - "10203:5432"
+      - "5434:5432"
     networks:
       - spark-kafka-net
 
@@ -71,7 +71,7 @@ services:
       --backend-store-uri postgresql://mlflow:mlflow@mlflow-postgres:5432/mlflowdb
       --default-artifact-root /mlflow/artifacts"
     ports:
-      - "10204:5000"
+      - "5000:5000"
     volumes:
       - ./outputs/mlruns:/mlflow/artifacts
     networks:
@@ -111,7 +111,7 @@ services:
     depends_on:
       - ecomm-backend
     ports:
-      - "10205:4200"
+      - "4200:4200"
     networks:
       - spark-kafka-net
 
@@ -126,7 +126,7 @@ services:
     environment:
       - MLFLOW_TRACKING_URI=http://mlflow:5000
     ports:
-      - "10206:5002"
+      - "5002:5002"
     networks:
       - spark-kafka-net
 
@@ -153,7 +153,7 @@ services:
     volumes:
       - ./DB/seed:/seed
     ports:
-      - "10207:5001"
+      - "5001:5001"
     networks:
       - spark-kafka-net
 
@@ -167,7 +167,7 @@ services:
     environment:
       - DATABASE_URL=postgres://ecomm:ecomm@ecomm-postgres:5432/ecommdb?sslmode=disable
     ports:
-      - "10208:8081"
+      - "8081:8081"
     networks:
       - spark-kafka-net
 
@@ -180,7 +180,7 @@ services:
       - POSTGRES_PASSWORD=ecomm
       - POSTGRES_DB=ecommdb
     ports:
-      - "10209:5432"
+      - "5433:5432"
     volumes:
       - ./DB/init:/docker-entrypoint-initdb.d
       - ./DB/seed:/seed
@@ -196,7 +196,7 @@ services:
       - POSTGRES_PASSWORD=airflow
       - POSTGRES_DB=airflow
     ports:
-      - "10210:5432"
+      - "5432:5432"
     networks:
       - spark-kafka-net
 
@@ -255,7 +255,7 @@ services:
         - ./plugins:/opt/airflow/plugins
 
     ports:
-      - "10211:8080"
+      - "8080:8080"
     networks:
       - spark-kafka-net
     command: webserver
@@ -323,7 +323,7 @@ services:
   spark-consumer:
     build:
       context: .
-      dockerfile: docker/spark/DockerFile
+      dockerfile: docker/spark/Dockerfile
     container_name: spark-consumer
     user: root
     depends_on:
