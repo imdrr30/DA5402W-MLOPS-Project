@@ -33,7 +33,7 @@ CREATE TABLE IF NOT EXISTS users (
 );
 
 CREATE TABLE IF NOT EXISTS events (
-    id                  BIGINT PRIMARY KEY,
+    id                  BIGSERIAL PRIMARY KEY,
     visitor_id          TEXT,
     user_id             TEXT,
     timestamp           TIMESTAMPTZ,
