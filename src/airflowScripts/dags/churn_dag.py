@@ -30,6 +30,11 @@ with DAG(
         ),
     )
 
+    dvc_push = BashOperator(
+        task_id="dvc_push",
+        bash_command="cd /opt/airflow && dvc push DB/topic_dumps.dvc 2>&1 || true",
+    )
+
     feature_churn = BashOperator(
         task_id="feature_engineering_churn",
         bash_command=(
@@ -44,4 +49,5 @@ with DAG(
         bash_command="python /opt/airflow/src/pythonScripts/model_churn/train_churn_model.py",
     )
 
+    spark_etl >> dvc_push
     spark_etl >> feature_churn >> train_churn

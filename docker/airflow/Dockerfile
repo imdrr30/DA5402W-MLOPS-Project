@@ -12,6 +12,7 @@ RUN pip install --no-cache-dir \
     mlflow \
     pyarrow \
     pyspark==3.5.1 \
+    "dvc[ssh]" \
     "kafka-python==2.2.15" \
     "pyOpenSSL>=24.0.0" \
     "cryptography>=42.0.0" \

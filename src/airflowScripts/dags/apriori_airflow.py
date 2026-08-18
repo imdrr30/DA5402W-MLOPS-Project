@@ -32,6 +32,11 @@ with DAG(
         ),
     )
 
+    dvc_push = BashOperator(
+        task_id="dvc_push",
+        bash_command="cd /opt/airflow && dvc push DB/topic_dumps.dvc 2>&1 || true",
+    )
+
     # -----------------------------------------------------------------------
     # Branch A: Recommendation (Apriori)
     # -----------------------------------------------------------------------
@@ -55,5 +60,6 @@ with DAG(
     )
 
     feature_task >> train_apriori >> publish_recommendation
+    spark_etl >> dvc_push
     spark_etl >> feature_task
 
