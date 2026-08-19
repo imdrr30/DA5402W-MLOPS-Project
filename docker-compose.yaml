@@ -9,8 +9,11 @@ services:
   kafka:
     image: apache/kafka:3.7.0
     container_name: kafka
+    depends_on:
+      - spark
     ports:
       - "9094:9094"
+      - "7071:7071"
     environment:
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: broker,controller
@@ -20,6 +23,10 @@ services:
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
       KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_OPTS: "-javaagent:/opt/kafka/libs/jmx_prometheus_javaagent.jar=7071:/opt/kafka/config/jmx-exporter-config.yml"
+    volumes:
+      - ./configs/kafka/jmx_prometheus_javaagent.jar:/opt/kafka/libs/jmx_prometheus_javaagent.jar
+      - ./configs/kafka/jmx-exporter-config.yml:/opt/kafka/config/jmx-exporter-config.yml
     networks:
       - spark-kafka-net
 
@@ -30,9 +37,11 @@ services:
       dockerfile: docker/spark/Dockerfile
     container_name: spark-master
     user: root  # Prevents local permission issues with volume mounting
-    command: tail -f /dev/null
+    command: supervisord -n -c /etc/supervisord.conf
     ports:
-      - "4040:4040"  # Spark UI port for local apps
+      - "4040:4040"   # Spark UI
+      - "9090:9090"   # Prometheus
+      - "3000:3000"   # Grafana
     volumes:
       # Maps local directories to Spark's official default workspace directory
       - ./src:/opt/project/src
@@ -40,6 +49,12 @@ services:
       - ./outputs/sparkOutput:/opt/spark/work-dir/output
       - ./DB:/DB/
       - ./lookupData:/lookupData
+      # Prometheus & Grafana monitoring configs
+      - ./configs/prometheus:/etc/prometheus
+      - ./configs/grafana/provisioning:/etc/grafana/provisioning
+      - ./configs/grafana/dashboards:/var/lib/grafana/dashboards
+      - ./configs/supervisord.conf:/etc/supervisord.conf
+      - ./configs/spark/metrics.properties:/opt/spark/conf/metrics.properties
     networks:
       - spark-kafka-net
 
@@ -63,8 +78,10 @@ services:
     container_name: mlflow
     depends_on:
       - mlflow-postgres
+      - spark
     command: >-
-      bash -c "pip install psycopg2-binary -q &&
+      bash -c "pip install psycopg2-binary prometheus_client -q &&
+      python -c 'from prometheus_client import start_http_server; import time; start_http_server(8000); time.sleep(1e9)' &
       mlflow server
       --host 0.0.0.0
       --port 5000
@@ -197,6 +214,8 @@ services:
       - POSTGRES_DB=airflow
     ports:
       - "5432:5432"
+    networks:
+      - spark-kafka-net
 
   # --- Airflow Init (DB + Admin User) ---
   airflow-init:
@@ -220,6 +239,8 @@ services:
         - ./logs:/opt/airflow/logs
         - ./plugins:/opt/airflow/plugins
     command: bash -c "airflow db init && airflow users create --username admin --firstname Admin --lastname User --role Admin --email admin@example.com --password admin"
+    networks:
+      - spark-kafka-net
 
   # --- Airflow Webserver ---
   airflow-webserver:
@@ -232,11 +253,17 @@ services:
           condition: service_completed_successfully
         postgres:
           condition: service_started
+        spark:
+          condition: service_started
     environment:
         - AIRFLOW__CORE__EXECUTOR=LocalExecutor
         - AIRFLOW__CORE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres:5432/airflow
         - AIRFLOW__CORE__LOAD_EXAMPLES=False
         - AIRFLOW__WEBSERVER__SECRET_KEY=mysecretkey123
+        - AIRFLOW__METRICS__STATSD_ON=True
+        - AIRFLOW__METRICS__STATSD_HOST=localhost
+        - AIRFLOW__METRICS__STATSD_PORT=9125
+        - AIRFLOW__METRICS__STATSD_PREFIX=airflow
     volumes:
         - ./src/airflowScripts/dags:/opt/airflow/dags
         - ./src/pythonScripts:/opt/airflow/src/pythonScripts
@@ -245,10 +272,12 @@ services:
         - ./outputs:/opt/airflow/outputs
         - ./logs:/opt/airflow/logs
         - ./plugins:/opt/airflow/plugins
-
+        - ./configs/airflow/statsd_mapping.yml:/etc/statsd-mapping.yml
     ports:
       - "8080:8080"
-    command: webserver
+    command: ["bash", "-c", "statsd_exporter --statsd.listen-udp=:9125 --statsd.listen-tcp=:9125 --web.listen-address=:9091 --statsd.mapping-config=/etc/statsd-mapping.yml & exec airflow webserver"]
+    networks:
+      - spark-kafka-net
 
   # --- Airflow Scheduler ---
   airflow-scheduler:
@@ -261,11 +290,17 @@ services:
           condition: service_completed_successfully
         postgres:
           condition: service_started
+        spark:
+          condition: service_started
     environment:
         - AIRFLOW__CORE__EXECUTOR=LocalExecutor
         - AIRFLOW__CORE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres:5432/airflow
         - AIRFLOW__CORE__LOAD_EXAMPLES=False
         - AIRFLOW__WEBSERVER__SECRET_KEY=mysecretkey123
+        - AIRFLOW__METRICS__STATSD_ON=True
+        - AIRFLOW__METRICS__STATSD_HOST=localhost
+        - AIRFLOW__METRICS__STATSD_PORT=9125
+        - AIRFLOW__METRICS__STATSD_PREFIX=airflow
     volumes:
         - ./src/airflowScripts/dags:/opt/airflow/dags
         - ./src/pythonScripts:/opt/airflow/src/pythonScripts
@@ -274,5 +309,7 @@ services:
         - ./outputs:/opt/airflow/outputs
         - ./logs:/opt/airflow/logs
         - ./plugins:/opt/airflow/plugins
-
-    command: scheduler
+        - ./configs/airflow/statsd_mapping.yml:/etc/statsd-mapping.yml
+    command: ["bash", "-c", "statsd_exporter --statsd.listen-udp=:9125 --statsd.listen-tcp=:9125 --web.listen-address=:9091 --statsd.mapping-config=/etc/statsd-mapping.yml & exec airflow scheduler"]
+    networks:
+      - spark-kafka-net

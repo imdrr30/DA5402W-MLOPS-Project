@@ -1,5 +1,17 @@
 FROM apache/airflow:2.7.1-python3.10
 
+# Install statsd-exporter to convert Airflow StatsD metrics to Prometheus format
+USER root
+RUN ARCH=$(dpkg --print-architecture) && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends wget && \
+    wget -qO /tmp/statsd_exporter.tar.gz \
+      "https://github.com/prometheus/statsd_exporter/releases/download/v0.26.0/statsd_exporter-0.26.0.linux-${ARCH}.tar.gz" && \
+    tar xzf /tmp/statsd_exporter.tar.gz -C /tmp && \
+    mv /tmp/statsd_exporter-0.26.0.linux-${ARCH}/statsd_exporter /usr/local/bin/ && \
+    rm -rf /tmp/statsd_exporter* && \
+    rm -rf /var/lib/apt/lists/*
+
 USER airflow
 
 # Pin numpy to 1.x before installing pandas/pyarrow/mlxtend; remove snowflake provider to avoid pyOpenSSL conflict

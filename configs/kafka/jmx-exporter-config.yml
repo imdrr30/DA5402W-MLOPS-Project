@@ -1,0 +1,70 @@
+---
+# JMX Exporter configuration for Apache Kafka broker metrics
+rules:
+  # Broker topic metrics (per-topic)
+  - pattern: "kafka.server<type=BrokerTopicMetrics, name=(.+), topic=(.+)><>Count"
+    name: "kafka_server_brokertopicmetrics_$1_total"
+    type: COUNTER
+    labels:
+      topic: "$2"
+
+  # Broker topic metrics (aggregate)
+  - pattern: "kafka.server<type=BrokerTopicMetrics, name=(.+)><>Count"
+    name: "kafka_server_brokertopicmetrics_$1_total"
+    type: COUNTER
+
+  # Broker topic metrics rates
+  - pattern: "kafka.server<type=BrokerTopicMetrics, name=(.+)><>OneMinuteRate"
+    name: "kafka_server_brokertopicmetrics_$1_rate"
+    type: GAUGE
+
+  # Request metrics
+  - pattern: "kafka.network<type=RequestMetrics, name=(.+), request=(.+)><>Count"
+    name: "kafka_network_requestmetrics_$1_total"
+    type: COUNTER
+    labels:
+      request: "$2"
+
+  - pattern: "kafka.network<type=RequestMetrics, name=(.+), request=(.+)><>Mean"
+    name: "kafka_network_requestmetrics_$1_mean"
+    type: GAUGE
+    labels:
+      request: "$2"
+
+  # Replica manager
+  - pattern: "kafka.server<type=ReplicaManager, name=(.+)><>Value"
+    name: "kafka_server_replicamanager_$1"
+    type: GAUGE
+
+  # Controller metrics
+  - pattern: "kafka.controller<type=KafkaController, name=(.+)><>Value"
+    name: "kafka_controller_kafkacontroller_$1"
+    type: GAUGE
+
+  # Log metrics
+  - pattern: "kafka.log<type=LogFlushStats, name=(.+)><>Count"
+    name: "kafka_log_logflushstats_$1_total"
+    type: COUNTER
+
+  # Partition count
+  - pattern: "kafka.server<type=ReplicaManager, name=PartitionCount><>Value"
+    name: "kafka_server_replicamanager_partitioncount"
+    type: GAUGE
+
+  # Under-replicated partitions
+  - pattern: "kafka.server<type=ReplicaManager, name=UnderReplicatedPartitions><>Value"
+    name: "kafka_server_replicamanager_underreplicatedpartitions"
+    type: GAUGE
+
+  # JVM metrics
+  - pattern: "java.lang<type=Memory><HeapMemoryUsage>used"
+    name: "kafka_jvm_heap_memory_used_bytes"
+    type: GAUGE
+
+  - pattern: "java.lang<type=Memory><HeapMemoryUsage>max"
+    name: "kafka_jvm_heap_memory_max_bytes"
+    type: GAUGE
+
+  - pattern: "java.lang<type=Threading><>ThreadCount"
+    name: "kafka_jvm_thread_count"
+    type: GAUGE

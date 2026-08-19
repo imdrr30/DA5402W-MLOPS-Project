@@ -1,0 +1,52 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  # Prometheus self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Flask ecomm-backend (prometheus_client on port 8000)
+  - job_name: 'flask-backend'
+    static_configs:
+      - targets: ['ecomm-backend:8000']
+
+  # FastAPI Apriori recommendation API (metrics on /metrics, same port)
+  - job_name: 'apriori-api'
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['apriori-api:5002']
+
+  # Churn Notifier service (prometheus_client on port 8000)
+  - job_name: 'churn-notifier'
+    static_configs:
+      - targets: ['churn-notifier:8000']
+
+  # Kafka broker via JMX exporter (javaagent on port 7071)
+  - job_name: 'kafka'
+    static_configs:
+      - targets: ['kafka:7071']
+
+  # Airflow Webserver (statsd-exporter on port 9091)
+  - job_name: 'airflow-webserver'
+    static_configs:
+      - targets: ['airflow-webserver:9091']
+
+  # Airflow Scheduler (statsd-exporter on port 9091)
+  - job_name: 'airflow-scheduler'
+    static_configs:
+      - targets: ['airflow-scheduler:9091']
+
+  # Spark metrics servlet (only active when a Spark job is running)
+  - job_name: 'spark'
+    metrics_path: /metrics/prometheus/
+    static_configs:
+      - targets: ['localhost:4040']
+    scrape_interval: 30s
+
+  # MLflow (basic process metrics via prometheus_client on port 8000)
+  - job_name: 'mlflow'
+    static_configs:
+      - targets: ['mlflow:8000']

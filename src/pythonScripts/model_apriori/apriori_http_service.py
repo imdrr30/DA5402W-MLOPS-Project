@@ -54,6 +54,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Auto-instrument all routes with Prometheus metrics (exposes /metrics endpoint)
+from prometheus_fastapi_instrumentator import Instrumentator
+Instrumentator().instrument(app).expose(app)
+
 
 @app.get("/health")
 def health():
