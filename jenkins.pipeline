@@ -1,6 +1,10 @@
 pipeline {
     agent any
 
+    triggers {
+        githubPush()
+    }
+
     environment {
         // Sets the working directory to your WSL path
         REPO_PATH = '/mnt/d/Projects/DA5402W-MLOPS-Project'
