@@ -7,6 +7,8 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
 from werkzeug.security import generate_password_hash, check_password_hash
 from sqlalchemy import func, desc
+import time as _time
+from prometheus_client import Counter, Histogram, Gauge, start_http_server
 
 app = Flask(__name__)
 CORS(app)
@@ -21,6 +23,41 @@ app.config["SQLALCHEMY_DATABASE_URI"] = (
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 db = SQLAlchemy(app)
+
+# ---------------------------------------------------------------------------
+# Prometheus metrics
+# ---------------------------------------------------------------------------
+REQUEST_COUNT = Counter(
+    'flask_http_requests_total',
+    'Total HTTP requests',
+    ['method', 'endpoint', 'status']
+)
+REQUEST_LATENCY = Histogram(
+    'flask_http_request_duration_seconds',
+    'HTTP request latency in seconds',
+    ['method', 'endpoint']
+)
+ACTIVE_REQUESTS = Gauge(
+    'flask_http_requests_active',
+    'Number of active HTTP requests'
+)
+
+
+@app.before_request
+def _before_request():
+    request._prom_start_time = _time.time()
+    ACTIVE_REQUESTS.inc()
+
+
+@app.after_request
+def _after_request(response):
+    latency = _time.time() - getattr(request, '_prom_start_time', _time.time())
+    endpoint = request.path
+    REQUEST_COUNT.labels(method=request.method, endpoint=endpoint, status=response.status_code).inc()
+    REQUEST_LATENCY.labels(method=request.method, endpoint=endpoint).observe(latency)
+    ACTIVE_REQUESTS.dec()
+    return response
+
 
 # ---------------------------------------------------------------------------
 # Kafka producer (optional — backend still works without Kafka)
@@ -609,6 +646,8 @@ def get_daily_reports():
 
 
 if __name__ == "__main__":
+    # Start Prometheus metrics server on port 8000 (separate from Flask's port 5001)
+    start_http_server(8000)
     with app.app_context():
         # Only creates tables that don't exist (cart_items, recommendation_scores, daily_reports)
         db.create_all()

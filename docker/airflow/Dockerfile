@@ -2,14 +2,21 @@ FROM apache/airflow:2.7.1-python3.10
 
 USER root
 
-# PySpark needs a JVM and `ps` (used by load-spark-env.sh)
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends procps openjdk-11-jre-headless && \
+# Install statsd-exporter (Prometheus), Java (PySpark), and procps
+RUN ARCH=$(dpkg --print-architecture) && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends wget procps openjdk-11-jre-headless && \
+    wget -qO /tmp/statsd_exporter.tar.gz \
+      "https://github.com/prometheus/statsd_exporter/releases/download/v0.26.0/statsd_exporter-0.26.0.linux-${ARCH}.tar.gz" && \
+    tar xzf /tmp/statsd_exporter.tar.gz -C /tmp && \
+    mv /tmp/statsd_exporter-0.26.0.linux-${ARCH}/statsd_exporter /usr/local/bin/ && \
+    rm -rf /tmp/statsd_exporter* && \
     rm -rf /var/lib/apt/lists/* && \
     ln -s "$(dirname "$(dirname "$(readlink -f "$(command -v java)")")")" /usr/lib/jvm/default-java
 
 ENV JAVA_HOME=/usr/lib/jvm/default-java
 ENV PATH="${JAVA_HOME}/bin:${PATH}"
+
 
 USER airflow
 

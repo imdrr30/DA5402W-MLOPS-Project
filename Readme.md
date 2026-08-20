@@ -93,3 +93,70 @@ docker compose -f docker-compose.yaml up -d ecomm-postgres ecomm-backend fronten
 python ./src/kafkaScripts/launch_producer.py --n-users 1000 --n-products 200 --batch-size 500 --interval-seconds 5 --kafka-broker localhost:9094 --out-dir ./outputs/kafkaOutput --seed 42 --run-forever
 
 ------------------
+
+# Prometheus + Grafana Monitoring
+
+Prometheus and Grafana run inside the spark-master container (no separate containers needed).
+They start automatically whenever any service is brought up (kafka, mlflow, airflow, etc.)
+
+Ports:
+- Prometheus UI  : http://localhost:9090
+- Grafana UI     : http://localhost:3000  (login: admin / admin)
+- Kafka JMX      : http://localhost:7071/metrics
+
+Monitored services:
+- Flask backend (ecomm-backend)   --> request rate, latency, error rate
+- Apriori API                     --> prediction rate, latency
+- Churn Notifier                  --> events processed, abandonments, notifications
+- Kafka                           --> messages in/out, bytes, partitions (via JMX exporter)
+- Airflow webserver + scheduler   --> task completions, executor status (via statsd-exporter)
+- Spark                           --> JVM metrics (only when a spark-submit job is running)
+- MLflow                          --> basic process metrics
+
+------------------
+
+# Running monitoring independently
+
+10. Start ONLY Prometheus + Grafana (without kafka, airflow, etc.)
+docker compose up spark --build -d
+
+This gives you the monitoring stack at localhost:9090 and localhost:3000
+All scrape targets will show "DOWN" until you bring up other services
+
+11. Start monitoring + specific services only
+
+(Monitoring + Kafka only)
+docker compose up kafka -d
+
+(Monitoring + MLflow only)
+docker compose up mlflow -d
+
+(Monitoring + Airflow only)
+docker compose up airflow-webserver airflow-scheduler -d
+
+(Everything)
+docker compose up -d
+
+Note: Starting kafka, mlflow, or airflow automatically starts the spark container
+(which runs Prometheus + Grafana), so monitoring is always available.
+
+12. Check Prometheus scrape targets
+Open http://localhost:9090/targets
+All active services should show "UP" within ~30 seconds
+Spark target will show "DOWN" when no spark-submit job is running — this is expected
+
+13. Access Grafana dashboard
+Open http://localhost:3000
+Login with admin / admin (change password on first login)
+The "MLOps Pipeline Overview" dashboard is pre-loaded with panels for all services
+
+14. Verify Flask backend metrics are being collected
+curl http://localhost:5001/api/health
+Then check in Prometheus: http://localhost:9090/graph
+Query: flask_http_requests_total
+
+15. Verify Kafka JMX metrics
+curl http://localhost:7071/metrics
+Should show kafka_server_brokertopicmetrics_* metrics
+
+------------------

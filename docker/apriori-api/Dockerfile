@@ -10,7 +10,8 @@ RUN pip install --no-cache-dir \
     uvicorn==0.30.1 \
     mlflow==2.14.0 \
     pandas==2.2.2 \
-    mlxtend==0.23.1
+    mlxtend==0.23.1 \
+    prometheus-fastapi-instrumentator==7.0.0
 
 COPY src/pythonScripts/model_apriori/apriori_http_service.py .
 COPY src/pythonScripts/model_apriori/apriori_mlflow_predict.py .

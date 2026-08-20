@@ -20,6 +20,7 @@ import pandas as pd
 import psycopg2
 from kafka import KafkaConsumer
 from kafka.errors import NoBrokersAvailable
+from prometheus_client import Counter, Gauge, start_http_server
 
 logging.basicConfig(
     level=logging.INFO,
@@ -58,6 +59,14 @@ cart_state: dict = defaultdict(lambda: {
     "notified": False,
 })
 state_lock = threading.Lock()
+
+# ---------------------------------------------------------------------------
+# Prometheus metrics
+# ---------------------------------------------------------------------------
+EVENTS_PROCESSED = Counter('churn_events_processed_total', 'Total Kafka events processed by churn notifier')
+CART_ABANDONMENTS = Counter('churn_cart_abandonments_total', 'Total cart abandonments detected')
+NOTIFICATIONS_SENT = Counter('churn_notifications_sent_total', 'Total discount notifications sent')
+ACTIVE_CARTS = Gauge('churn_active_carts', 'Number of active carts currently being tracked')
 
 # ---------------------------------------------------------------------------
 # Pre-computed user scores (loaded once at startup, refreshed periodically)
@@ -160,6 +169,7 @@ def trigger_discount_notification(user_id: str) -> None:
         f"{'='*60}\n",
         flush=True,
     )
+    NOTIFICATIONS_SENT.inc()
 
 
 # ---------------------------------------------------------------------------
@@ -187,6 +197,10 @@ def handle_event(event: dict) -> None:
             state["items"].clear()
             state["notified"] = False
 
+    # Update Prometheus metrics
+    EVENTS_PROCESSED.inc()
+    ACTIVE_CARTS.set(sum(1 for s in cart_state.values() if s["items"]))
+
 
 # ---------------------------------------------------------------------------
 # Background abandonment checker
@@ -209,6 +223,7 @@ def abandonment_checker() -> None:
                     state["notified"] = True  # prevent duplicate sends
 
         for user_id in to_notify:
+            CART_ABANDONMENTS.inc()
             try:
                 trigger_discount_notification(user_id)
             except Exception as e:
@@ -251,6 +266,9 @@ def start_consumer() -> None:
 # Entry point
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
+    # Start Prometheus metrics server on port 8000
+    start_http_server(8000)
+
     load_user_scores()
 
     # Reload scores every 10 minutes in background (picks up new Airflow runs)
