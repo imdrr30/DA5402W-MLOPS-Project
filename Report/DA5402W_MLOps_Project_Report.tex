@@ -310,6 +310,7 @@ The streaming consumer (\texttt{spark\_streaming\_consumer.py}) connects to Kafk
     \item \textbf{Schema Enforcement:} Enforces rigid typing via \texttt{EVENT\_SCHEMA} (\texttt{id, session\_id, user\_id, timestamp, event\_type, product\_id, is\_recommended}), isolating corrupted payloads into dead-letter sinks.
     \item \textbf{Dynamic Topic Splitting:} Parses incoming JSON streams and routes records to dedicated partitioned Parquet destinations: \texttt{/DB/topic\_dumps/user\_events}, \texttt{/DB/topic\_dumps/recommendation\_events}, and \texttt{/DB/topic\_dumps/notification\_events}.
     \item \textbf{Fault-Tolerant State Checkpointing:} Spark Structured Streaming checkpoints (\texttt{/opt/spark/work-dir/checkpoints}) track offset commits, ensuring exactly-once processing across consumer restarts.
+    \item \textbf{Live Metrics Computation:} Live metrics of the received events are computed every 30 seconds, from the data consumed by the spark consumer. These metrics are saved in, \texttt{/DB/metrics/}.
 \end{itemize}
 
 \subsection{Batch ETL \& Feature Engineering Pipelines}
@@ -336,6 +337,9 @@ Daily Analytics \newline (\texttt{analytics.py}) & All topic dumps & Computes bu
 
 \subsection{Data Version Control (DVC) Integration}
 To ensure end-to-end dataset reproducibility, Data Version Control (DVC) is directly integrated into the Airflow DAG workflows. Every batch ETL execution triggers an automated \texttt{dvc push DB/topic\_dumps.dvc} task. The underlying Parquet data hashes are committed to Git, guaranteeing that any model artifact registered in MLflow can be precisely traced back to the exact snapshot of training data ingested.
+
+\subsection{Daily Analytics}
+To monitoring the user activities, notifications and recommendations sent out the user on daily basis. These are calculated using the events consumed by spark, which were stored as parquet files in the DB. This dag is triggered at 2 am everyday, the results will be displayed on a dashboard.
 
 % ==============================================================================
 % 5. MODEL DEVELOPMENT
